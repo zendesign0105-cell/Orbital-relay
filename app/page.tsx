@@ -13,7 +13,7 @@ type Point = {
 const TAU = Math.PI * 2;
 const DEFAULT_POINT_COUNT = 12000;
 const MAX_POINT_COUNT = 60000;
-const TOOL_PACKAGE_FORMAT = "orbital-relay-tool";
+const TOOL_PACKAGE_FORMAT = "particle-signal-tool";
 const TOOL_PACKAGE_VERSION = 1;
 
 function fract(value: number) {
@@ -524,7 +524,7 @@ export default function Home() {
     const toolPackage = {
       format: TOOL_PACKAGE_FORMAT,
       version: TOOL_PACKAGE_VERSION,
-      name: "Orbital Relay",
+      name: "Particle Signal",
       createdAt: new Date().toISOString(),
       scene: {
         model: "communications-satellite",
@@ -553,7 +553,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `orbital-relay-seed-${seed}.orbital.json`;
+    link.download = `particle-signal-seed-${seed}.orbital.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -652,8 +652,8 @@ export default function Home() {
       </div>
 
       <nav className="site-nav" aria-label="Primary navigation">
-        <a className="wordmark" href="#top" aria-label="Orbital Relay home">
-          OR / 01
+        <a className="wordmark" href="#top" aria-label="Particle Signal home">
+          PS / 01
         </a>
         <div className="nav-status">
           <span className="pulse-dot" />
@@ -853,7 +853,7 @@ export default function Home() {
             </article>
           </div>
           <div className="systems-footer">
-            <span>ORBITAL RELAY / EXPERIMENT 01</span>
+            <span>PARTICLE SIGNAL / EXPERIMENT 01</span>
             <a href="#top">Return to orbit ↑</a>
           </div>
         </section>
