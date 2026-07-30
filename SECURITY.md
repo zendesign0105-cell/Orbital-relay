@@ -1,6 +1,6 @@
 # Security Policy
 
-Orbital Relay is a client-side visual experiment and does not require secrets,
+Particle Signal is a client-side visual experiment and does not require secrets,
 accounts, or a backend.
 
 If you discover a security issue, do not publish sensitive details in a public

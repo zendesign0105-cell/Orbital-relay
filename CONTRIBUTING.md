@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for improving Orbital Relay.
+Thank you for improving Particle Signal.
 
 ## Local Setup
 
