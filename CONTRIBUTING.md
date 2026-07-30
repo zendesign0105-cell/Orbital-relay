@@ -21,7 +21,7 @@ pnpm run vercel-build
 Then verify:
 
 - JPG and transparent PNG uploads remain local and render correctly
-- cursor attract/repel, drag rotation, wheel zoom, and reset work
+- cursor parallax, orbital motion, drag rotation, wheel zoom, and reset work
 - the controls remain usable at 3,000 and 60,000 points
 - original color, tint, and background controls update the field
 - PNG export downloads the current composition

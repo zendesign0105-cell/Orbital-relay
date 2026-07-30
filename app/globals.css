@@ -78,7 +78,7 @@ a:focus-visible {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.16;
+  opacity: 0.09;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
@@ -423,13 +423,13 @@ a:focus-visible {
   position: absolute;
   top: 92px;
   right: clamp(18px, 3vw, 48px);
-  bottom: 54px;
   z-index: 30;
   display: flex;
-  width: min(328px, calc(100vw - 36px));
+  width: min(304px, calc(100vw - 36px));
+  max-height: calc(100svh - 140px);
   flex-direction: column;
-  gap: 20px;
-  padding: 22px;
+  gap: 18px;
+  padding: 20px;
   border: 1px solid var(--line);
   border-radius: 20px;
   background: var(--panel);
@@ -491,6 +491,10 @@ a:focus-visible {
 .control-stack {
   display: grid;
   gap: 18px;
+}
+
+.essential-controls {
+  gap: 20px;
 }
 
 .range-control {
@@ -577,6 +581,71 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1.45;
 }
 
+.signal-color-control {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.signal-color-control > span {
+  display: grid;
+  gap: 4px;
+}
+
+.signal-color-control small {
+  color: #6f6878;
+  font-size: 9px;
+}
+
+.signal-color-control.is-compact {
+  min-height: 44px;
+}
+
+.advanced-controls {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.advanced-controls summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  color: #8f879a;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+}
+
+.advanced-controls summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-controls summary span:last-child {
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 400;
+  transition: transform 180ms ease;
+}
+
+.advanced-controls[open] summary span:last-child {
+  transform: rotate(45deg);
+}
+
+.advanced-controls-body {
+  display: grid;
+  gap: 18px;
+  padding: 4px 0 18px;
+}
+
 .segmented-control {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -602,27 +671,6 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(216, 203, 255, 0.12);
   color: #e9e2f4;
   box-shadow: inset 0 0 0 1px rgba(216, 203, 255, 0.15);
-}
-
-.color-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.color-row label {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: #938c9d;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 input[type="color"] {
@@ -653,9 +701,7 @@ input[type="color"]::-moz-color-swatch {
   display: grid;
   grid-template-columns: 0.9fr 1.1fr;
   gap: 8px;
-  margin-top: auto;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  margin-top: 0;
 }
 
 .file-chip {
@@ -771,7 +817,7 @@ input[type="color"]::-moz-color-swatch {
   }
 
   .control-panel {
-    bottom: 20px;
+    bottom: auto;
   }
 
   .file-chip {
@@ -889,7 +935,7 @@ input[type="color"]::-moz-color-swatch {
 @media (max-height: 680px) and (min-width: 721px) {
   .control-panel {
     top: 84px;
-    bottom: 16px;
+    max-height: calc(100svh - 100px);
     gap: 14px;
     padding: 17px;
   }
@@ -903,7 +949,7 @@ input[type="color"]::-moz-color-swatch {
   }
 
   .panel-actions {
-    padding-top: 12px;
+    padding-top: 0;
   }
 
   .intro-card {

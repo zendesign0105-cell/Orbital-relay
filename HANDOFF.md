@@ -19,7 +19,8 @@ Use this brief:
 > uploaded images into interactive 3D particle fields. Preserve client-side
 > privacy, recognizable image reconstruction, adjustable subject isolation,
 > drag rotation, wheel and button zoom,
-> cursor attract/repel, original and tint color modes, custom background,
+> subtle cursor parallax, orbital paths, original and tint color modes,
+> custom background,
 > 3,000–60,000 particles, and PNG export. Keep Inter Tight and the black/lavender
 > visual system. Do not add a backend or upload images to a server unless
 > explicitly requested. Validate both production builds and the rendering tests.
@@ -31,7 +32,7 @@ Use this brief:
 - [ ] Run `pnpm install`
 - [ ] Run `pnpm dev`
 - [ ] Test JPG, transparent PNG, and replacement upload
-- [ ] Test cursor movement, drag, zoom, reset, attract, and repel
+- [ ] Test cursor parallax, orbit motion, drag, zoom, and reset
 - [ ] Test original colors, tint, background, and 3,000/60,000 points
 - [ ] Export a PNG
 - [ ] Check desktop and mobile layouts

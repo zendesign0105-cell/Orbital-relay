@@ -1,7 +1,7 @@
 # Particle Signal
 
 Particle Signal is a single-screen creative tool that turns an uploaded image
-into a customizable, cursor-reactive 3D particle field. Images are decoded and
+into a cinematic, cursor-reactive 3D signal sculpture. Images are decoded and
 sampled entirely in the browser; they are never uploaded to a server.
 
 Live site:
@@ -12,8 +12,8 @@ Live site:
 - Local JPG, PNG, WebP, GIF, and image-file processing
 - Subtle luminance-driven 3D depth
 - Automatic subject isolation with adjustable background cleanup
-- Drag-to-rotate, wheel-to-zoom, visible zoom controls, and cursor distortion
-- Repel and attract interaction modes
+- Animated orbital paths and signal nodes
+- Drag-to-rotate, wheel-to-zoom, visible zoom controls, and cursor parallax
 - Original-image color or a custom single-color tint
 - Custom background color
 - Adjustable depth, dot size, interaction strength, and 3,000–60,000 particles
@@ -45,12 +45,12 @@ pnpm run vercel-build
 ## Using the Tool
 
 1. Select **Upload image**, choose a file, or drop an image anywhere.
-2. Move the cursor across the result to bend nearby particles.
+2. Move the cursor across the result for subtle parallax.
 3. Use **Subject** mode and **Background cleanup** to separate the main object,
    or switch to **Full frame** to keep every pixel.
 4. Drag to rotate the depth field, scroll to zoom, or use the −/+ buttons.
-5. Open **Controls** to change particle density, depth, dot size, force,
-   interaction mode, colors, or background.
+5. Open **Controls** for density, depth, zoom, and signal color. Secondary
+   sampling and appearance settings live under **Advanced**.
 6. Select **Export PNG** to download the current composition.
 
 The image stays on the device. Only sampled pixel values are used to render the

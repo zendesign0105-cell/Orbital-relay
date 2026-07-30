@@ -23,16 +23,16 @@ On every animation frame the canvas:
 
 1. Paints the selected background and a restrained radial glow.
 2. Applies the current yaw, pitch, zoom, and subtle depth breathing.
-3. Projects each 3D point into screen space.
-4. Applies cursor attraction or repulsion inside the interaction radius.
-5. Draws either original sampled colors or the chosen tint.
+3. Draws three animated orbital paths and their moving signal nodes.
+4. Projects each 3D point into screen space.
+5. Draws either the signal tint or original sampled colors.
 
 React state drives labels and controls. Refs mirror render settings so control
 changes do not restart the animation loop.
 
 ## Interaction Model
 
-- Pointer movement distorts nearby points.
+- Pointer movement adds restrained parallax to the whole signal sculpture.
 - Pointer drag updates yaw and pitch.
 - Mouse wheel and the visible −/+ controls change zoom.
 - Double-click and **Reset view** restore the camera.
@@ -47,8 +47,8 @@ changes do not restart the animation loop.
 3. Run `node --test tests/rendered-html.test.mjs`.
 4. Run `pnpm run vercel-build`.
 5. Test an opaque JPG and a transparent PNG.
-6. Check attract/repel, original/tint, minimum/maximum density, drag, zoom,
-   reset, replacement upload, and export.
+6. Check parallax, original/tint, minimum/maximum density, drag, zoom, reset,
+   replacement upload, Advanced controls, and export.
 7. Check desktop, a short laptop viewport, and a mobile viewport.
 
 ## Performance Notes

@@ -29,7 +29,6 @@ type PixelSource = {
 };
 
 type ColorMode = "original" | "tint";
-type ForceMode = "repel" | "attract";
 type FocusMode = "subject" | "full";
 
 type Rgb = {
@@ -43,8 +42,6 @@ type RenderSettings = {
   colorMode: ColorMode;
   depth: number;
   dotSize: number;
-  forceMode: ForceMode;
-  forceStrength: number;
   tint: string;
 };
 
@@ -159,6 +156,90 @@ function getSubjectWeight(
   const feather = 0.065;
 
   return smoothstep(threshold - feather, threshold + feather, subjectScore);
+}
+
+function drawOrbitNetwork(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  scale: number,
+  yaw: number,
+  pitch: number,
+  time: number,
+  tint: Rgb,
+) {
+  const orbits = [
+    { radius: 1.34, squash: 0.46, rotation: -0.28, speed: 0.00016, phase: 0.4 },
+    { radius: 1.48, squash: 0.34, rotation: 0.16, speed: -0.00012, phase: 2.3 },
+    { radius: 1.17, squash: 0.63, rotation: 0.48, speed: 0.0002, phase: 4.6 },
+  ];
+
+  context.save();
+  context.lineWidth = 0.72;
+
+  orbits.forEach((orbit, index) => {
+    const rotation = orbit.rotation + yaw * 0.34 - pitch * 0.16;
+    const radiusX = scale * orbit.radius;
+    const radiusY =
+      scale * orbit.squash * (1 - Math.min(0.22, Math.abs(pitch) * 0.22));
+
+    context.beginPath();
+    context.ellipse(
+      centerX,
+      centerY,
+      radiusX,
+      radiusY,
+      rotation,
+      0,
+      Math.PI * 2,
+    );
+    context.strokeStyle = `rgba(${tint.r}, ${tint.g}, ${tint.b}, ${
+      0.18 - index * 0.025
+    })`;
+    context.stroke();
+
+    const theta = time * orbit.speed + orbit.phase;
+    const cosTheta = Math.cos(theta);
+    const sinTheta = Math.sin(theta);
+    const cosRotation = Math.cos(rotation);
+    const sinRotation = Math.sin(rotation);
+    const nodeX =
+      centerX +
+      cosTheta * radiusX * cosRotation -
+      sinTheta * radiusY * sinRotation;
+    const nodeY =
+      centerY +
+      cosTheta * radiusX * sinRotation +
+      sinTheta * radiusY * cosRotation;
+    const nodeSize = 1.7 + index * 0.35;
+
+    context.beginPath();
+    context.arc(nodeX, nodeY, nodeSize, 0, Math.PI * 2);
+    context.fillStyle = `rgba(${tint.r}, ${tint.g}, ${tint.b}, 0.86)`;
+    context.shadowColor = `rgba(${tint.r}, ${tint.g}, ${tint.b}, 0.72)`;
+    context.shadowBlur = 12;
+    context.fill();
+    context.shadowBlur = 0;
+
+    const echoTheta = theta + Math.PI * (0.72 + index * 0.15);
+    const echoCos = Math.cos(echoTheta);
+    const echoSin = Math.sin(echoTheta);
+    const echoX =
+      centerX +
+      echoCos * radiusX * cosRotation -
+      echoSin * radiusY * sinRotation;
+    const echoY =
+      centerY +
+      echoCos * radiusX * sinRotation +
+      echoSin * radiusY * cosRotation;
+
+    context.beginPath();
+    context.arc(echoX, echoY, 0.85, 0, Math.PI * 2);
+    context.fillStyle = `rgba(${tint.r}, ${tint.g}, ${tint.b}, 0.44)`;
+    context.fill();
+  });
+
+  context.restore();
 }
 
 function createDemoParticles(targetCount: number): Particle[] {
@@ -293,14 +374,12 @@ export default function Home() {
   });
 
   const [background, setBackground] = useState("#050408");
-  const [colorMode, setColorMode] = useState<ColorMode>("original");
+  const [colorMode, setColorMode] = useState<ColorMode>("tint");
   const [depth, setDepth] = useState(42);
   const [density, setDensity] = useState(DEFAULT_POINTS);
   const [dotSize, setDotSize] = useState(1.15);
-  const [forceMode, setForceMode] = useState<ForceMode>("repel");
-  const [forceStrength, setForceStrength] = useState(0.82);
   const [focusMode, setFocusMode] = useState<FocusMode>("subject");
-  const [cleanup, setCleanup] = useState(58);
+  const [cleanup, setCleanup] = useState(64);
   const [tint, setTint] = useState("#d8cbff");
   const [zoom, setZoom] = useState(1);
   const [activeCount, setActiveCount] = useState(DEFAULT_POINTS);
@@ -313,11 +392,9 @@ export default function Home() {
 
   const settingsRef = useRef<RenderSettings>({
     background,
-    colorMode,
+    colorMode: "tint",
     depth,
     dotSize,
-    forceMode,
-    forceStrength,
     tint,
   });
 
@@ -327,8 +404,6 @@ export default function Home() {
       colorMode,
       depth,
       dotSize,
-      forceMode,
-      forceStrength,
       tint,
     };
   }, [
@@ -336,8 +411,6 @@ export default function Home() {
     colorMode,
     depth,
     dotSize,
-    forceMode,
-    forceStrength,
     tint,
   ]);
 
@@ -431,7 +504,17 @@ export default function Home() {
       const centerX = width > 980 ? width * 0.45 : width * 0.5;
       const centerY = height * (width < 720 ? 0.42 : 0.5);
       const depthAmount = settings.depth / 100;
-      const interactionRadius = Math.min(150, Math.max(86, width * 0.105));
+
+      drawOrbitNetwork(
+        context,
+        centerX,
+        centerY,
+        scale,
+        yaw,
+        pitch,
+        time,
+        tintRgb,
+      );
 
       context.fillStyle = settings.tint;
 
@@ -446,25 +529,8 @@ export default function Home() {
         const finalZ = particle.y * sinX + rotatedZ * cosX;
         const perspective = 3.25 / Math.max(1.8, 3.25 + finalZ);
 
-        let screenX = centerX + rotatedX * scale * perspective;
-        let screenY = centerY + rotatedY * scale * perspective;
-
-        if (pointer.active) {
-          const dx = screenX - pointer.x;
-          const dy = screenY - pointer.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-
-          if (distance > 0 && distance < interactionRadius) {
-            const falloff = 1 - distance / interactionRadius;
-            const force =
-              falloff *
-              falloff *
-              settings.forceStrength *
-              (settings.forceMode === "repel" ? 62 : -44);
-            screenX += (dx / distance) * force;
-            screenY += (dy / distance) * force;
-          }
-        }
+        const screenX = centerX + rotatedX * scale * perspective;
+        const screenY = centerY + rotatedY * scale * perspective;
 
         const size = Math.max(
           0.45,
@@ -671,10 +737,14 @@ export default function Home() {
     setZoom(nextZoom);
   };
 
-  const changeZoom = (amount: number) => {
-    const nextZoom = clamp(viewRef.current.zoom + amount, 0.5, 3);
+  const updateZoom = (value: number) => {
+    const nextZoom = clamp(value, 0.5, 3);
     viewRef.current.zoom = nextZoom;
     setZoom(nextZoom);
+  };
+
+  const changeZoom = (amount: number) => {
+    updateZoom(viewRef.current.zoom + amount);
   };
 
   const resetView = () => {
@@ -813,13 +883,13 @@ export default function Home() {
 
       {!hasImage && (
         <section className="intro-card" aria-labelledby="tool-title">
-          <span className="eyebrow">Image → particles → interaction</span>
+          <span className="eyebrow">Subject → signal → orbit</span>
           <h1 id="tool-title">
             Turn any image into a <em>living signal.</em>
           </h1>
           <p>
-            Upload a JPG, PNG or WebP. Particle Signal rebuilds it locally as a
-            responsive 3D point field.
+            Upload a subject. Particle Signal isolates it locally, rebuilds it
+            as a sculptural point field, then sets it in motion.
           </p>
           <button
             className="upload-target"
@@ -837,9 +907,9 @@ export default function Home() {
           </button>
           {error && <p className="error-message">{error}</p>}
           <div className="intro-meta" aria-label="Tool capabilities">
-            <span>Up to 60K points</span>
+            <span>Orbital depth</span>
             <span>Private by default</span>
-            <span>PNG export</span>
+            <span>Up to 60K points</span>
           </div>
         </section>
       )}
@@ -859,8 +929,8 @@ export default function Home() {
       >
         <div className="panel-header">
           <div>
-            <span className="eyebrow">Live controls</span>
-            <h2>Shape the signal</h2>
+            <span className="eyebrow">Signal controls</span>
+            <h2>Compose the field</h2>
           </div>
           <button
             className="icon-button"
@@ -872,26 +942,7 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="control-group">
-          <span className="control-label">Image area</span>
-          <div className="segmented-control">
-            {(["subject", "full"] as FocusMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={focusMode === mode ? "is-active" : ""}
-                onClick={() => setFocusMode(mode)}
-              >
-                {mode === "subject" ? "Subject" : "Full frame"}
-              </button>
-            ))}
-          </div>
-          <small className="control-note">
-            Subject mode fades pixels that match the image edges.
-          </small>
-        </div>
-
-        <div className="control-stack">
+        <div className="control-stack essential-controls">
           <label className="range-control">
             <span>
               Particle density
@@ -904,26 +955,6 @@ export default function Home() {
               step="1000"
               value={density}
               onChange={(event) => setDensity(Number(event.target.value))}
-            />
-          </label>
-
-          <label
-            className={`range-control ${
-              focusMode === "full" ? "is-disabled" : ""
-            }`}
-          >
-            <span>
-              Background cleanup
-              <output>{cleanup}%</output>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={cleanup}
-              disabled={focusMode === "full"}
-              onChange={(event) => setCleanup(Number(event.target.value))}
             />
           </label>
 
@@ -944,72 +975,24 @@ export default function Home() {
 
           <label className="range-control">
             <span>
-              Dot size
-              <output>{dotSize.toFixed(2)}×</output>
+              Zoom
+              <output>{Math.round(zoom * 100)}%</output>
             </span>
             <input
               type="range"
               min="0.5"
               max="3"
-              step="0.05"
-              value={dotSize}
-              onChange={(event) => setDotSize(Number(event.target.value))}
+              step="0.1"
+              value={zoom}
+              onChange={(event) => updateZoom(Number(event.target.value))}
             />
           </label>
 
-          <label className="range-control">
+          <label className="signal-color-control">
             <span>
-              Cursor force
-              <output>{forceStrength.toFixed(2)}×</output>
+              <span className="control-label">Signal color</span>
+              <small>Particles, paths and nodes</small>
             </span>
-            <input
-              type="range"
-              min="0.2"
-              max="1.5"
-              step="0.05"
-              value={forceStrength}
-              onChange={(event) =>
-                setForceStrength(Number(event.target.value))
-              }
-            />
-          </label>
-        </div>
-
-        <div className="control-group">
-          <span className="control-label">Cursor behavior</span>
-          <div className="segmented-control">
-            {(["repel", "attract"] as ForceMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={forceMode === mode ? "is-active" : ""}
-                onClick={() => setForceMode(mode)}
-              >
-                {mode === "repel" ? "Repel" : "Attract"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="control-group">
-          <span className="control-label">Particle color</span>
-          <div className="segmented-control">
-            {(["original", "tint"] as ColorMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={colorMode === mode ? "is-active" : ""}
-                onClick={() => setColorMode(mode)}
-              >
-                {mode === "original" ? "Original" : "Tint"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="color-row">
-          <label>
-            <span>Signal</span>
             <input
               type="color"
               value={tint}
@@ -1017,16 +1000,94 @@ export default function Home() {
               aria-label="Signal tint color"
             />
           </label>
-          <label>
-            <span>Space</span>
-            <input
-              type="color"
-              value={background}
-              onChange={(event) => setBackground(event.target.value)}
-              aria-label="Background color"
-            />
-          </label>
         </div>
+
+        <details className="advanced-controls">
+          <summary>
+            <span>Advanced</span>
+            <span aria-hidden="true">+</span>
+          </summary>
+          <div className="advanced-controls-body">
+            <div className="control-group">
+              <span className="control-label">Image area</span>
+              <div className="segmented-control">
+                {(["subject", "full"] as FocusMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={focusMode === mode ? "is-active" : ""}
+                    onClick={() => setFocusMode(mode)}
+                  >
+                    {mode === "subject" ? "Subject" : "Full frame"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label
+              className={`range-control ${
+                focusMode === "full" ? "is-disabled" : ""
+              }`}
+            >
+              <span>
+                Background cleanup
+                <output>{cleanup}%</output>
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={cleanup}
+                disabled={focusMode === "full"}
+                onChange={(event) => setCleanup(Number(event.target.value))}
+              />
+            </label>
+
+            <label className="range-control">
+              <span>
+                Dot size
+                <output>{dotSize.toFixed(2)}×</output>
+              </span>
+              <input
+                type="range"
+                min="0.5"
+                max="3"
+                step="0.05"
+                value={dotSize}
+                onChange={(event) => setDotSize(Number(event.target.value))}
+              />
+            </label>
+
+            <div className="control-group">
+              <span className="control-label">Particle color</span>
+              <div className="segmented-control">
+                {(["tint", "original"] as ColorMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={colorMode === mode ? "is-active" : ""}
+                    onClick={() => setColorMode(mode)}
+                  >
+                    {mode === "tint" ? "Signal tint" : "Original"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="signal-color-control is-compact">
+              <span>
+                <span className="control-label">Space color</span>
+              </span>
+              <input
+                type="color"
+                value={background}
+                onChange={(event) => setBackground(event.target.value)}
+                aria-label="Background color"
+              />
+            </label>
+          </div>
+        </details>
 
         <div className="panel-actions">
           <button
@@ -1051,7 +1112,7 @@ export default function Home() {
       <div className="interaction-hint" aria-hidden="true">
         <span>Drag to rotate</span>
         <span>Scroll to zoom</span>
-        <span>Move to distort</span>
+        <span>Move for depth</span>
       </div>
 
       {isDraggingFile && (

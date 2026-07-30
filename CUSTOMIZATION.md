@@ -37,7 +37,7 @@ The animation loop applies:
 - `breathing` for subtle continuous Z motion
 - `yaw` and `pitch` for rotation
 - `view.zoom` for camera scale
-- `interactionRadius` and `force` for cursor behavior
+- `drawOrbitNetwork()` for orbital geometry, signal nodes, and their motion
 
 Keep motion subtle enough that the uploaded image remains recognizable.
 

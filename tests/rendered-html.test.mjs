@@ -39,7 +39,7 @@ test("server-renders the single-screen Particle Signal tool", async () => {
   assert.match(html, /living signal/);
   assert.match(html, /Choose an image/);
   assert.match(html, /Processed locally/);
-  assert.match(html, /Shape the signal/);
+  assert.match(html, /Compose the field/);
   assert.match(html, /Background cleanup/);
   assert.match(html, /Zoom out/);
   assert.match(html, /Zoom in/);
@@ -57,15 +57,17 @@ test("keeps upload, interaction, and one-screen contracts in the source", async 
   assert.match(page, /accept="image\/\*"/);
   assert.match(page, /const MAX_POINTS = 60_000/);
   assert.match(page, /type ColorMode = "original" \| "tint"/);
-  assert.match(page, /type ForceMode = "repel" \| "attract"/);
   assert.match(page, /type FocusMode = "subject" \| "full"/);
   assert.match(page, /getBackgroundPalette/);
+  assert.match(page, /drawOrbitNetwork/);
+  assert.match(page, /<details className="advanced-controls">/);
   assert.match(page, /Background cleanup/);
   assert.match(page, /aria-label="Zoom out"/);
   assert.match(page, /aria-label="Zoom in"/);
   assert.match(page, /Drag to rotate/);
   assert.match(page, /Scroll to zoom/);
-  assert.match(page, /Move to distort/);
+  assert.match(page, /Move for depth/);
+  assert.doesNotMatch(page, /Cursor force|Cursor behavior/);
   assert.match(page, /canvas\.toBlob/);
   assert.match(page, /getImageData/);
   assert.match(css, /height:\s*100svh/);
