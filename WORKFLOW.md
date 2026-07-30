@@ -8,10 +8,12 @@ All image processing happens in `app/page.tsx`:
 2. An `Image` decodes the local object URL.
 3. A temporary canvas scales the source to a maximum dimension of 960 pixels.
 4. `getImageData()` reads the RGBA pixels locally.
-5. `createImageParticles()` samples a jittered grid at the requested density.
-6. Pixel position becomes X/Y, luminance becomes depth, and RGBA becomes
+5. Subject mode estimates edge colors and suppresses matching background
+   pixels with a feathered, adjustable mask.
+6. `createImageParticles()` samples a jittered grid at the requested density.
+7. Pixel position becomes X/Y, luminance becomes depth, and RGBA becomes
    particle color and opacity.
-7. The temporary object URL is revoked after sampling.
+8. The temporary object URL is revoked after sampling.
 
 The source image is never sent over the network or stored by the application.
 
@@ -32,7 +34,7 @@ changes do not restart the animation loop.
 
 - Pointer movement distorts nearby points.
 - Pointer drag updates yaw and pitch.
-- Mouse wheel changes zoom.
+- Mouse wheel and the visible −/+ controls change zoom.
 - Double-click and **Reset view** restore the camera.
 - Touch pointer events use the same drag path.
 - Drag-and-drop and the hidden file input share one image-loading function.

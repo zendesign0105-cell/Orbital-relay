@@ -102,6 +102,54 @@ a:focus-visible {
   mix-blend-mode: soft-light;
 }
 
+.zoom-controls {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  z-index: 18;
+  display: grid;
+  grid-template-columns: 34px 52px 34px;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(8, 7, 12, 0.76);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+}
+
+.zoom-controls button {
+  display: grid;
+  width: 34px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #d9d2e2;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.zoom-controls button:hover:not(:disabled) {
+  background: rgba(216, 203, 255, 0.12);
+  color: #fff;
+}
+
+.zoom-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.24;
+}
+
+.zoom-controls output {
+  color: #827b8b;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 8px;
+  text-align: center;
+}
+
 .topbar {
   position: absolute;
   inset: 0 0 auto;
@@ -450,6 +498,10 @@ a:focus-visible {
   gap: 11px;
 }
 
+.range-control.is-disabled {
+  opacity: 0.36;
+}
+
 .range-control > span {
   display: flex;
   align-items: center;
@@ -517,6 +569,12 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.control-note {
+  color: #6f6878;
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 .segmented-control {
@@ -817,6 +875,10 @@ input[type="color"]::-moz-color-swatch {
     left: 14px;
     max-width: none;
     justify-content: center;
+  }
+
+  .zoom-controls {
+    bottom: 62px;
   }
 
   .interaction-hint {

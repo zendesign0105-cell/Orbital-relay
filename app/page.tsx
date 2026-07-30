@@ -30,6 +30,13 @@ type PixelSource = {
 
 type ColorMode = "original" | "tint";
 type ForceMode = "repel" | "attract";
+type FocusMode = "subject" | "full";
+
+type Rgb = {
+  r: number;
+  g: number;
+  b: number;
+};
 
 type RenderSettings = {
   background: string;
@@ -64,6 +71,96 @@ function hexToRgb(hex: string) {
   };
 }
 
+function smoothstep(edgeStart: number, edgeEnd: number, value: number) {
+  const progress = clamp((value - edgeStart) / (edgeEnd - edgeStart), 0, 1);
+  return progress * progress * (3 - 2 * progress);
+}
+
+function getBackgroundPalette(source: PixelSource): Rgb[] {
+  const { width, height, pixels } = source;
+  const patchSize = Math.max(4, Math.round(Math.min(width, height) * 0.075));
+  const sampleStep = Math.max(1, Math.floor(patchSize / 10));
+  const corners = [
+    [0, 0],
+    [Math.max(0, width - patchSize), 0],
+    [0, Math.max(0, height - patchSize)],
+    [Math.max(0, width - patchSize), Math.max(0, height - patchSize)],
+  ];
+
+  return corners.flatMap(([startX, startY]) => {
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let totalWeight = 0;
+
+    for (let y = startY; y < Math.min(height, startY + patchSize); y += sampleStep) {
+      for (let x = startX; x < Math.min(width, startX + patchSize); x += sampleStep) {
+        const offset = (y * width + x) * 4;
+        const alpha = pixels[offset + 3] / 255;
+
+        if (alpha < 0.12) {
+          continue;
+        }
+
+        red += pixels[offset] * alpha;
+        green += pixels[offset + 1] * alpha;
+        blue += pixels[offset + 2] * alpha;
+        totalWeight += alpha;
+      }
+    }
+
+    if (totalWeight === 0) {
+      return [];
+    }
+
+    return [
+      {
+        r: red / totalWeight,
+        g: green / totalWeight,
+        b: blue / totalWeight,
+      },
+    ];
+  });
+}
+
+function getSubjectWeight(
+  source: PixelSource,
+  palette: Rgb[],
+  x: number,
+  y: number,
+  cleanup: number,
+) {
+  if (palette.length === 0) {
+    return 1;
+  }
+
+  const { width, height, pixels } = source;
+  const offset = (y * width + x) * 4;
+  const r = pixels[offset];
+  const g = pixels[offset + 1];
+  const b = pixels[offset + 2];
+  let closestBackground = 1;
+
+  for (const color of palette) {
+    const red = (r - color.r) / 255;
+    const green = (g - color.g) / 255;
+    const blue = (b - color.b) / 255;
+    const distance = Math.sqrt(
+      red * red * 0.24 + green * green * 0.58 + blue * blue * 0.18,
+    );
+    closestBackground = Math.min(closestBackground, distance);
+  }
+
+  const normalizedX = (x / Math.max(1, width - 1) - 0.5) * 2;
+  const normalizedY = (y / Math.max(1, height - 1) - 0.5) * 2;
+  const centrality = 1 - clamp(Math.hypot(normalizedX, normalizedY) / 1.25, 0, 1);
+  const subjectScore = closestBackground + centrality * 0.08;
+  const threshold = 0.035 + (cleanup / 100) * 0.225;
+  const feather = 0.065;
+
+  return smoothstep(threshold - feather, threshold + feather, subjectScore);
+}
+
 function createDemoParticles(targetCount: number): Particle[] {
   const count = Math.min(targetCount, 14_000);
 
@@ -89,10 +186,39 @@ function createDemoParticles(targetCount: number): Particle[] {
 function createImageParticles(
   source: PixelSource,
   targetCount: number,
+  focusMode: FocusMode,
+  cleanup: number,
 ): Particle[] {
   const { width, height, pixels } = source;
   const area = width * height;
-  const step = Math.max(1, Math.sqrt(area / (targetCount * 1.12)));
+  const palette = focusMode === "subject" ? getBackgroundPalette(source) : [];
+  let retention = 1;
+
+  if (focusMode === "subject" && palette.length > 0) {
+    const probeStep = Math.max(2, Math.floor(Math.sqrt(area / 5_000)));
+    let kept = 0;
+    let checked = 0;
+
+    for (let y = 0; y < height; y += probeStep) {
+      for (let x = 0; x < width; x += probeStep) {
+        const offset = (y * width + x) * 4;
+        if (pixels[offset + 3] / 255 < 0.06) {
+          continue;
+        }
+        checked += 1;
+        if (getSubjectWeight(source, palette, x, y, cleanup) > 0.06) {
+          kept += 1;
+        }
+      }
+    }
+
+    retention = checked > 0 ? clamp(kept / checked, 0.06, 1) : 1;
+  }
+
+  const step = Math.max(
+    1,
+    Math.sqrt((area * retention) / (targetCount * 1.12)),
+  );
   const longestSide = Math.max(width, height);
   const particles: Particle[] = [];
 
@@ -121,6 +247,14 @@ function createImageParticles(
       const g = pixels[offset + 1];
       const b = pixels[offset + 2];
       const luminance = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+      const subjectWeight =
+        focusMode === "subject"
+          ? getSubjectWeight(source, palette, x, y, cleanup)
+          : 1;
+
+      if (subjectWeight < 0.06) {
+        continue;
+      }
 
       particles.push({
         x: (x - width / 2) / (longestSide / 2),
@@ -129,7 +263,7 @@ function createImageParticles(
         r,
         g,
         b,
-        alpha: alpha * (0.38 + luminance * 0.62),
+        alpha: alpha * (0.38 + luminance * 0.62) * subjectWeight,
         phase: hash(x, y, 3) * Math.PI * 2,
       });
     }
@@ -165,7 +299,10 @@ export default function Home() {
   const [dotSize, setDotSize] = useState(1.15);
   const [forceMode, setForceMode] = useState<ForceMode>("repel");
   const [forceStrength, setForceStrength] = useState(0.82);
+  const [focusMode, setFocusMode] = useState<FocusMode>("subject");
+  const [cleanup, setCleanup] = useState(58);
   const [tint, setTint] = useState("#d8cbff");
+  const [zoom, setZoom] = useState(1);
   const [activeCount, setActiveCount] = useState(DEFAULT_POINTS);
   const [fileName, setFileName] = useState("");
   const [hasImage, setHasImage] = useState(false);
@@ -204,15 +341,18 @@ export default function Home() {
     tint,
   ]);
 
-  const rebuildParticles = useCallback((nextDensity: number) => {
-    const source = pixelSourceRef.current;
-    const nextParticles = source
-      ? createImageParticles(source, nextDensity)
-      : createDemoParticles(nextDensity);
+  const rebuildParticles = useCallback(
+    (nextDensity: number) => {
+      const source = pixelSourceRef.current;
+      const nextParticles = source
+        ? createImageParticles(source, nextDensity, focusMode, cleanup)
+        : createDemoParticles(nextDensity);
 
-    particlesRef.current = nextParticles;
-    setActiveCount(nextParticles.length);
-  }, []);
+      particlesRef.current = nextParticles;
+      setActiveCount(nextParticles.length);
+    },
+    [cleanup, focusMode],
+  );
 
   useEffect(() => {
     rebuildParticles(density);
@@ -424,6 +564,8 @@ export default function Home() {
           const nextParticles = createImageParticles(
             pixelSourceRef.current,
             density,
+            focusMode,
+            cleanup,
           );
           particlesRef.current = nextParticles;
           setActiveCount(nextParticles.length);
@@ -438,6 +580,7 @@ export default function Home() {
             yaw: 0,
             zoom: 1,
           };
+          setZoom(1);
         } catch {
           setError("The image could not be read. Try saving it as PNG or JPG.");
         } finally {
@@ -454,7 +597,7 @@ export default function Home() {
 
       image.src = objectUrl;
     },
-    [density],
+    [cleanup, density, focusMode],
   );
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -523,17 +666,22 @@ export default function Home() {
 
   const handleWheel = (event: WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
-    viewRef.current.zoom = clamp(
-      viewRef.current.zoom - event.deltaY * 0.001,
-      0.55,
-      2.2,
-    );
+    const nextZoom = clamp(viewRef.current.zoom - event.deltaY * 0.001, 0.5, 3);
+    viewRef.current.zoom = nextZoom;
+    setZoom(nextZoom);
+  };
+
+  const changeZoom = (amount: number) => {
+    const nextZoom = clamp(viewRef.current.zoom + amount, 0.5, 3);
+    viewRef.current.zoom = nextZoom;
+    setZoom(nextZoom);
   };
 
   const resetView = () => {
     viewRef.current.yaw = 0;
     viewRef.current.pitch = -0.04;
     viewRef.current.zoom = 1;
+    setZoom(1);
   };
 
   const exportImage = () => {
@@ -598,6 +746,26 @@ export default function Home() {
 
       <div className="ambient-grid" aria-hidden="true" />
       <div className="noise-layer" aria-hidden="true" />
+
+      <div className="zoom-controls" aria-label="View zoom controls">
+        <button
+          type="button"
+          onClick={() => changeZoom(-0.2)}
+          disabled={zoom <= 0.5}
+          aria-label="Zoom out"
+        >
+          −
+        </button>
+        <output aria-live="polite">{Math.round(zoom * 100)}%</output>
+        <button
+          type="button"
+          onClick={() => changeZoom(0.2)}
+          disabled={zoom >= 3}
+          aria-label="Zoom in"
+        >
+          +
+        </button>
+      </div>
 
       <header className="topbar">
         <a className="brand" href="#" aria-label="Particle Signal home">
@@ -704,6 +872,25 @@ export default function Home() {
           </button>
         </div>
 
+        <div className="control-group">
+          <span className="control-label">Image area</span>
+          <div className="segmented-control">
+            {(["subject", "full"] as FocusMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={focusMode === mode ? "is-active" : ""}
+                onClick={() => setFocusMode(mode)}
+              >
+                {mode === "subject" ? "Subject" : "Full frame"}
+              </button>
+            ))}
+          </div>
+          <small className="control-note">
+            Subject mode fades pixels that match the image edges.
+          </small>
+        </div>
+
         <div className="control-stack">
           <label className="range-control">
             <span>
@@ -717,6 +904,26 @@ export default function Home() {
               step="1000"
               value={density}
               onChange={(event) => setDensity(Number(event.target.value))}
+            />
+          </label>
+
+          <label
+            className={`range-control ${
+              focusMode === "full" ? "is-disabled" : ""
+            }`}
+          >
+            <span>
+              Background cleanup
+              <output>{cleanup}%</output>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={cleanup}
+              disabled={focusMode === "full"}
+              onChange={(event) => setCleanup(Number(event.target.value))}
             />
           </label>
 

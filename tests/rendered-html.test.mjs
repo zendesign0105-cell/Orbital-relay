@@ -40,6 +40,9 @@ test("server-renders the single-screen Particle Signal tool", async () => {
   assert.match(html, /Choose an image/);
   assert.match(html, /Processed locally/);
   assert.match(html, /Shape the signal/);
+  assert.match(html, /Background cleanup/);
+  assert.match(html, /Zoom out/);
+  assert.match(html, /Zoom in/);
   assert.match(html, /Export PNG/);
   assert.doesNotMatch(html, /SYSTEM ARCHITECTURE|Return to orbit|THE RELAY/i);
 });
@@ -55,6 +58,11 @@ test("keeps upload, interaction, and one-screen contracts in the source", async 
   assert.match(page, /const MAX_POINTS = 60_000/);
   assert.match(page, /type ColorMode = "original" \| "tint"/);
   assert.match(page, /type ForceMode = "repel" \| "attract"/);
+  assert.match(page, /type FocusMode = "subject" \| "full"/);
+  assert.match(page, /getBackgroundPalette/);
+  assert.match(page, /Background cleanup/);
+  assert.match(page, /aria-label="Zoom out"/);
+  assert.match(page, /aria-label="Zoom in"/);
   assert.match(page, /Drag to rotate/);
   assert.match(page, /Scroll to zoom/);
   assert.match(page, /Move to distort/);

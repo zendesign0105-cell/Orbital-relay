@@ -17,6 +17,8 @@ Update the corresponding range input when changing the limit. Values above
 
 `createImageParticles()` controls how pixels become particles.
 
+- `getBackgroundPalette()` samples likely background colors from the corners.
+- `getSubjectWeight()` applies the adjustable, feathered Subject-mode mask.
 - `step` determines grid spacing from the requested density.
 - `jitterX` and `jitterY` soften the grid.
 - `longestSide` preserves the image aspect ratio.

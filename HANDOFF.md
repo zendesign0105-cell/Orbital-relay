@@ -17,7 +17,8 @@ Use this brief:
 
 > Maintain a single-screen Canvas 2D creative tool that transforms locally
 > uploaded images into interactive 3D particle fields. Preserve client-side
-> privacy, recognizable image reconstruction, drag rotation, wheel zoom,
+> privacy, recognizable image reconstruction, adjustable subject isolation,
+> drag rotation, wheel and button zoom,
 > cursor attract/repel, original and tint color modes, custom background,
 > 3,000–60,000 particles, and PNG export. Keep Inter Tight and the black/lavender
 > visual system. Do not add a backend or upload images to a server unless

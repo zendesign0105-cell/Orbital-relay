@@ -11,7 +11,8 @@ Live site:
 
 - Local JPG, PNG, WebP, GIF, and image-file processing
 - Subtle luminance-driven 3D depth
-- Drag-to-rotate, wheel-to-zoom, and cursor distortion
+- Automatic subject isolation with adjustable background cleanup
+- Drag-to-rotate, wheel-to-zoom, visible zoom controls, and cursor distortion
 - Repel and attract interaction modes
 - Original-image color or a custom single-color tint
 - Custom background color
@@ -45,10 +46,12 @@ pnpm run vercel-build
 
 1. Select **Upload image**, choose a file, or drop an image anywhere.
 2. Move the cursor across the result to bend nearby particles.
-3. Drag to rotate the depth field and scroll to zoom.
-4. Open **Controls** to change particle density, depth, dot size, force,
+3. Use **Subject** mode and **Background cleanup** to separate the main object,
+   or switch to **Full frame** to keep every pixel.
+4. Drag to rotate the depth field, scroll to zoom, or use the −/+ buttons.
+5. Open **Controls** to change particle density, depth, dot size, force,
    interaction mode, colors, or background.
-5. Select **Export PNG** to download the current composition.
+6. Select **Export PNG** to download the current composition.
 
 The image stays on the device. Only sampled pixel values are used to render the
 canvas. High particle counts require more graphics work; reduce density or dot
