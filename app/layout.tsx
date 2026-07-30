@@ -5,19 +5,28 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
   ),
-  title: "Particle Signal — Signals with Perspective",
+  title: "Particle Signal — Turn Images Into Interactive Particles",
   description:
-    "A cinematic, interactive satellite assembled from ten thousand cursor-reactive points.",
+    "Upload an image and transform it locally into a customizable, cursor-reactive 3D particle field.",
   openGraph: {
     title: "Particle Signal",
-    description: "Signals with perspective.",
-    images: [{ url: "/og-v2.png", width: 1200, height: 630, alt: "Particle Signal point-cloud communications satellite" }],
+    description:
+      "Turn any image into a living, interactive 3D particle signal.",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Particle Signal image-to-particle studio",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Particle Signal",
-    description: "Signals with perspective.",
-    images: ["/og-v2.png"],
+    description:
+      "Turn any image into a living, interactive 3D particle signal.",
+    images: ["/og.png"],
   },
   icons: {
     icon: "/favicon.svg",

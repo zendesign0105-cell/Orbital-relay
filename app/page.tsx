@@ -1,27 +1,58 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  DragEvent,
+  PointerEvent as ReactPointerEvent,
+  WheelEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-type Point = {
+type Particle = {
   x: number;
   y: number;
-  z: number;
+  depth: number;
+  r: number;
+  g: number;
+  b: number;
   alpha: number;
-  hue: number;
+  phase: number;
 };
 
-const TAU = Math.PI * 2;
-const DEFAULT_POINT_COUNT = 12000;
-const MAX_POINT_COUNT = 60000;
-const TOOL_PACKAGE_FORMAT = "particle-signal-tool";
-const TOOL_PACKAGE_VERSION = 1;
+type PixelSource = {
+  width: number;
+  height: number;
+  pixels: Uint8ClampedArray;
+};
 
-function fract(value: number) {
-  return value - Math.floor(value);
+type ColorMode = "original" | "tint";
+type ForceMode = "repel" | "attract";
+
+type RenderSettings = {
+  background: string;
+  colorMode: ColorMode;
+  depth: number;
+  dotSize: number;
+  forceMode: ForceMode;
+  forceStrength: number;
+  tint: string;
+};
+
+const MAX_POINTS = 60_000;
+const DEFAULT_POINTS = 18_000;
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
-function noise(index: number, seed: number) {
-  return fract(Math.sin(index * 127.1 + seed * 311.7) * 43758.5453123);
+function hash(a: number, b: number, salt = 0) {
+  const value = Math.sin(a * 127.1 + b * 311.7 + salt * 74.7) * 43758.5453;
+  return value - Math.floor(value);
 }
 
 function hexToRgb(hex: string) {
@@ -33,831 +64,797 @@ function hexToRgb(hex: string) {
   };
 }
 
-function rgba(color: { r: number; g: number; b: number }, alpha: number) {
-  return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+function createDemoParticles(targetCount: number): Particle[] {
+  const count = Math.min(targetCount, 14_000);
+
+  return Array.from({ length: count }, (_, index) => {
+    const radius = Math.sqrt((index + 0.5) / count);
+    const angle = index * GOLDEN_ANGLE;
+    const ripple = Math.sin(radius * 22 - angle * 0.35);
+    const brightness = 0.58 + hash(index, count) * 0.42;
+
+    return {
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius * 0.68,
+      depth: ripple * 0.48 + Math.cos(angle * 2) * 0.12,
+      r: Math.round(183 + brightness * 54),
+      g: Math.round(170 + brightness * 50),
+      b: 255,
+      alpha: 0.2 + brightness * 0.72,
+      phase: hash(index, 17) * Math.PI * 2,
+    };
+  });
 }
 
-function clamp(value: unknown, fallback: number, minimum: number, maximum: number) {
-  const numericValue = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(numericValue)
-    ? Math.min(maximum, Math.max(minimum, numericValue))
-    : fallback;
+function createImageParticles(
+  source: PixelSource,
+  targetCount: number,
+): Particle[] {
+  const { width, height, pixels } = source;
+  const area = width * height;
+  const step = Math.max(1, Math.sqrt(area / (targetCount * 1.12)));
+  const longestSide = Math.max(width, height);
+  const particles: Particle[] = [];
+
+  for (
+    let sampleY = step * 0.5;
+    sampleY < height && particles.length < targetCount;
+    sampleY += step
+  ) {
+    for (
+      let sampleX = step * 0.5;
+      sampleX < width && particles.length < targetCount;
+      sampleX += step
+    ) {
+      const jitterX = (hash(sampleX, sampleY, 1) - 0.5) * step * 0.5;
+      const jitterY = (hash(sampleX, sampleY, 2) - 0.5) * step * 0.5;
+      const x = clamp(Math.round(sampleX + jitterX), 0, width - 1);
+      const y = clamp(Math.round(sampleY + jitterY), 0, height - 1);
+      const offset = (y * width + x) * 4;
+      const alpha = pixels[offset + 3] / 255;
+
+      if (alpha < 0.06) {
+        continue;
+      }
+
+      const r = pixels[offset];
+      const g = pixels[offset + 1];
+      const b = pixels[offset + 2];
+      const luminance = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+
+      particles.push({
+        x: (x - width / 2) / (longestSide / 2),
+        y: (y - height / 2) / (longestSide / 2),
+        depth: (luminance - 0.5) * 1.35,
+        r,
+        g,
+        b,
+        alpha: alpha * (0.38 + luminance * 0.62),
+        phase: hash(x, y, 3) * Math.PI * 2,
+      });
+    }
+  }
+
+  return particles;
 }
 
-function validHex(value: unknown, fallback: string) {
-  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
-    ? value.toLowerCase()
-    : fallback;
-}
-
-function rotateY(point: Point, angle: number): Point {
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
-  return {
-    ...point,
-    x: point.x * c - point.z * s,
-    z: point.x * s + point.z * c,
-  };
-}
-
-function rotateX(point: Point, angle: number): Point {
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
-  return {
-    ...point,
-    y: point.y * c - point.z * s,
-    z: point.y * s + point.z * c,
-  };
-}
-
-function sampleSatellite(index: number, total: number, time: number, seed: number): Point {
-  const r1 = noise(index, seed);
-  const r2 = noise(index + 11003, seed);
-  const r3 = noise(index + 29011, seed);
-  const busEnd = Math.floor(total * 0.31);
-  const panelEnd = Math.floor(total * 0.67);
-  const boomEnd = Math.floor(total * 0.73);
-  const dishEnd = Math.floor(total * 0.85);
-  const instrumentEnd = Math.floor(total * 0.92);
-
-  if (index < busEnd) {
-    // A conventional rectangular equipment bus with six clearly defined faces.
-    const face = Math.floor(r3 * 6);
-    const width = 128;
-    const height = 112;
-    const depth = 96;
-    let x = (r1 - 0.5) * width;
-    let y = (r2 - 0.5) * height;
-    let z = (noise(index + 1901, seed) - 0.5) * depth;
-
-    if (face === 0 || face === 1) {
-      z = face === 0 ? -depth / 2 : depth / 2;
-    } else if (face === 2 || face === 3) {
-      x = face === 2 ? -width / 2 : width / 2;
-    } else {
-      y = face === 4 ? -height / 2 : height / 2;
-    }
-
-    const edgeDistance = Math.min(
-      Math.abs(Math.abs(x) - width / 2),
-      Math.abs(Math.abs(y) - height / 2),
-      Math.abs(Math.abs(z) - depth / 2),
-    );
-    return {
-      x,
-      y,
-      z,
-      alpha: edgeDistance < 4 ? 0.82 : 0.24 + 0.38 * noise(index + 5701, seed),
-      hue: face === 0 ? 218 : 204 + face * 3,
-    };
-  }
-
-  if (index < panelEnd) {
-    // Six long, rectangular photovoltaic panels arranged as two clean wings.
-    const local = index - busEnd;
-    const panelCount = panelEnd - busEnd;
-    const perPanel = panelCount / 6;
-    const panel = Math.min(5, Math.floor(local / perPanel));
-    const within = local - Math.floor(panel * perPanel);
-    const rows = Math.max(2, Math.ceil(perPanel / 30));
-    const side = panel < 3 ? -1 : 1;
-    const segment = panel % 3;
-    const column = within % 30;
-    const row = Math.min(rows - 1, Math.floor(within / 30));
-    const gx = column / 29;
-    const gy = row / (rows - 1);
-    const hingeWave = Math.sin(time * 0.3 + segment * 0.6 + side) * 2.2;
-    const gridRow = Math.round(gy * 19);
-    const gridLine = gridRow % 4 === 0 || column % 6 === 0;
-    return {
-      x: side * (94 + segment * 86 + gx * 78),
-      y: (gy - 0.5) * 88,
-      z: (gy - 0.5) * side * 7 + hingeWave,
-      alpha: gridLine ? 0.84 : 0.24 + 0.28 * r3,
-      hue: 206 + segment * 5 + 10 * gx,
-    };
-  }
-
-  if (index < boomEnd) {
-    // Straight deployment booms and triangular hinge braces.
-    const side = index % 2 === 0 ? -1 : 1;
-    const u = r2;
-    const brace = Math.floor(r1 * 3);
-    if (r3 < 0.5) {
-      return {
-        x: side * (64 + u * 30),
-        y: (noise(index + 88, seed) - 0.5) * 6,
-        z: -2 + Math.sin(time * 0.4 + side) * 1.2,
-        alpha: 0.56 + 0.34 * noise(index + 101, seed),
-        hue: 214,
-      };
-    }
-
-    const startY = brace === 0 ? -35 : brace === 1 ? 35 : 0;
-    const endY = brace === 2 ? 0 : brace === 0 ? -20 : 20;
-    return {
-      x: side * (62 + u * 33),
-      y: startY * (1 - u) + endY * u,
-      z: 4 + brace * 3,
-      alpha: 0.42 + 0.36 * r3,
-      hue: 210,
-    };
-  }
-
-  if (index < dishEnd) {
-    // A single dominant parabolic communications dish above the equipment bus.
-    if (r3 < 0.78) {
-      const radius = Math.sqrt(r1) * 52;
-      const angle = TAU * r2;
-      const dishX = Math.cos(angle) * radius;
-      const dishY = Math.sin(angle) * radius;
-      const dishDepth = (radius * radius) / 112;
-      return {
-        x: 18 + dishX * 0.86,
-        y: -92 + dishY * 0.52 - dishDepth * 0.18,
-        z: -4 + dishDepth + dishY * 0.72,
-        alpha: 0.3 + 0.52 * r2,
-        hue: 211 + 12 * r1,
-      };
-    }
-
-    const support = Math.floor(r1 * 4);
-    const u = r2;
-    if (support === 0) {
-      return {
-        x: 18,
-        y: -92 - u * 34,
-        z: -4 - u * 42,
-        alpha: 0.64 + 0.28 * r3,
-        hue: 218,
-      };
-    }
-
-    const spokeAngle = ((support - 1) / 3) * TAU;
-    return {
-      x: 18 + Math.cos(spokeAngle) * 42 * u,
-      y: -92 + Math.sin(spokeAngle) * 22 * u,
-      z: -4 + Math.sin(spokeAngle) * 31 * u,
-      alpha: 0.46 + 0.4 * r3,
-      hue: 215,
-    };
-  }
-
-  if (index < instrumentEnd) {
-    // One small payload sensor and long antenna masts—no face-like lens cluster.
-    if (r3 < 0.48) {
-      const angle = TAU * r1;
-      const ring = 0.38 + Math.floor(r2 * 3) * 0.28;
-      return {
-        x: -16 + Math.cos(angle) * 17 * ring,
-        y: 11 + Math.sin(angle) * 17 * ring,
-        z: -53 - (1 - ring) * 10,
-        alpha: 0.52 + 0.4 * (1 - ring),
-        hue: 202,
-      };
-    }
-
-    const mast = r1 > 0.5 ? -1 : 1;
-    const u = r2;
-    return {
-      x: mast === 1 ? 48 + u * 72 : -38,
-      y: mast === 1 ? -48 - u * 58 : -54 - u * 70,
-      z: mast === 1 ? 8 + u * 26 : 18,
-      alpha: 0.46 + 0.42 * r3,
-      hue: 217,
-    };
-  }
-
-  // Three restrained telemetry tracks frame the spacecraft without obscuring it.
-  const local = index - instrumentEnd;
-  const track = local % 3;
-  const slot = Math.floor(local / 3);
-  const slotsPerTrack = Math.max(1, Math.ceil((total - instrumentEnd) / 3));
-  const angle = TAU * (slot / slotsPerTrack) + time * (0.052 + track * 0.014);
-  const radiusX = 250 + track * 27;
-  const radiusY = 106 + track * 20;
-  const node = slot % (83 - track * 9) < 3;
-  return {
-    x: Math.cos(angle) * radiusX,
-    y: Math.sin(angle) * radiusY + (track - 1) * 10,
-    z: Math.sin(angle * 2 + track * 0.9) * (50 + track * 14),
-    alpha: node ? 0.9 : 0.12 + 0.09 * r3,
-    hue: node ? 187 : 216 + track * 5,
-  };
+function formatCount(value: number) {
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const packageInputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef(0);
-  const pointerRef = useRef({
-    targetX: 0,
-    targetY: 0,
-    x: 0,
-    y: 0,
-    active: false,
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pixelSourceRef = useRef<PixelSource | null>(null);
+  const particlesRef = useRef<Particle[]>(createDemoParticles(DEFAULT_POINTS));
+  const frameRef = useRef<number | null>(null);
+  const pointerRef = useRef({ active: false, x: 0, y: 0 });
+  const viewRef = useRef({
+    dragging: false,
+    lastX: 0,
+    lastY: 0,
+    pitch: -0.04,
+    yaw: 0,
+    zoom: 1,
   });
-  const speedRef = useRef(0.55);
-  const pointCountRef = useRef(DEFAULT_POINT_COUNT);
-  const dotSizeRef = useRef(1);
-  const brightnessRef = useRef(1);
-  const particleColorRef = useRef("#d8cbff");
-  const glowColorRef = useRef("#a986ff");
-  const backgroundColorRef = useRef("#050408");
-  const pausedRef = useRef(false);
-  const seedRef = useRef(7);
-  const [paused, setPaused] = useState(false);
-  const [speed, setSpeed] = useState(0.55);
-  const [pointCount, setPointCount] = useState(DEFAULT_POINT_COUNT);
-  const [dotSize, setDotSize] = useState(1);
-  const [brightness, setBrightness] = useState(1);
-  const [particleColor, setParticleColor] = useState("#d8cbff");
-  const [glowColor, setGlowColor] = useState("#a986ff");
-  const [backgroundColor, setBackgroundColor] = useState("#050408");
-  const [seed, setSeed] = useState(7);
-  const [controlsOpen, setControlsOpen] = useState(false);
-  const [packageStatus, setPackageStatus] = useState("");
+
+  const [background, setBackground] = useState("#050408");
+  const [colorMode, setColorMode] = useState<ColorMode>("original");
+  const [depth, setDepth] = useState(42);
+  const [density, setDensity] = useState(DEFAULT_POINTS);
+  const [dotSize, setDotSize] = useState(1.15);
+  const [forceMode, setForceMode] = useState<ForceMode>("repel");
+  const [forceStrength, setForceStrength] = useState(0.82);
+  const [tint, setTint] = useState("#d8cbff");
+  const [activeCount, setActiveCount] = useState(DEFAULT_POINTS);
+  const [fileName, setFileName] = useState("");
+  const [hasImage, setHasImage] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [error, setError] = useState("");
+
+  const settingsRef = useRef<RenderSettings>({
+    background,
+    colorMode,
+    depth,
+    dotSize,
+    forceMode,
+    forceStrength,
+    tint,
+  });
 
   useEffect(() => {
-    speedRef.current = speed;
-  }, [speed]);
-
-  useEffect(() => {
-    pointCountRef.current = pointCount;
-  }, [pointCount]);
-
-  useEffect(() => {
-    dotSizeRef.current = dotSize;
-  }, [dotSize]);
-
-  useEffect(() => {
-    brightnessRef.current = brightness;
-  }, [brightness]);
-
-  useEffect(() => {
-    particleColorRef.current = particleColor;
-  }, [particleColor]);
-
-  useEffect(() => {
-    glowColorRef.current = glowColor;
-  }, [glowColor]);
-
-  useEffect(() => {
-    backgroundColorRef.current = backgroundColor;
-  }, [backgroundColor]);
-
-  useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
-
-  useEffect(() => {
-    seedRef.current = seed;
-  }, [seed]);
-
-  useEffect(() => {
-    function updateScroll() {
-      const distance = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-      scrollRef.current = Math.max(0, Math.min(1, window.scrollY / distance));
-      document.documentElement.style.setProperty("--scroll-progress", scrollRef.current.toString());
-    }
-
-    updateScroll();
-    window.addEventListener("scroll", updateScroll, { passive: true });
-    window.addEventListener("resize", updateScroll);
-    return () => {
-      window.removeEventListener("scroll", updateScroll);
-      window.removeEventListener("resize", updateScroll);
+    settingsRef.current = {
+      background,
+      colorMode,
+      depth,
+      dotSize,
+      forceMode,
+      forceStrength,
+      tint,
     };
+  }, [
+    background,
+    colorMode,
+    depth,
+    dotSize,
+    forceMode,
+    forceStrength,
+    tint,
+  ]);
+
+  const rebuildParticles = useCallback((nextDensity: number) => {
+    const source = pixelSourceRef.current;
+    const nextParticles = source
+      ? createImageParticles(source, nextDensity)
+      : createDemoParticles(nextDensity);
+
+    particlesRef.current = nextParticles;
+    setActiveCount(nextParticles.length);
   }, []);
+
+  useEffect(() => {
+    rebuildParticles(density);
+  }, [density, rebuildParticles]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
+
     const context = canvas.getContext("2d", { alpha: false });
-    if (!context) return;
-
-    let frame = 0;
-    let elapsed = 0;
-    let previous = performance.now();
-
-    function resize() {
-      const box = canvas!.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas!.width = Math.max(1, Math.floor(box.width * dpr));
-      canvas!.height = Math.max(1, Math.floor(box.height * dpr));
-      context!.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!context) {
+      return;
     }
 
-    function draw(now: number) {
-      const delta = Math.min((now - previous) / 1000, 0.05);
-      previous = now;
-      if (!pausedRef.current) elapsed += delta * speedRef.current;
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
 
-      const width = canvas!.clientWidth;
-      const height = canvas!.clientHeight;
-      const progress = scrollRef.current;
-      const storyProgress = Math.min(1, progress / 0.74);
-      const cameraPush = 1 + Math.pow(storyProgress, 1.6) * 0.58;
-      const illustrationScale = width < 600 ? 1.34 : 1.46;
-      const scale = Math.min(width / 900, height / 720) * illustrationScale * cameraPush;
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      width = Math.max(1, rect.width);
+      height = Math.max(1, rect.height);
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const render = (time: number) => {
+      const settings = settingsRef.current;
+      const particles = particlesRef.current;
       const pointer = pointerRef.current;
-      pointer.x += (pointer.targetX - pointer.x) * 0.065;
-      pointer.y += (pointer.targetY - pointer.y) * 0.065;
-      const centerX =
-        width * (0.53 - storyProgress * 0.12) + pointer.x * 46 * Math.min(scale, 1.4);
-      const centerY =
-        height * (0.49 + storyProgress * 0.045) + pointer.y * 32 * Math.min(scale, 1.4);
-      const cursorX = width * (pointer.x * 0.5 + 0.5);
-      const cursorY = height * (pointer.y * 0.5 + 0.5);
-      const particleRgb = hexToRgb(particleColorRef.current);
-      const glowRgb = hexToRgb(glowColorRef.current);
-      const backgroundRgb = hexToRgb(backgroundColorRef.current);
+      const view = viewRef.current;
+      const tintRgb = hexToRgb(settings.tint);
+      const backgroundRgb = hexToRgb(settings.background);
 
-      context!.globalCompositeOperation = "source-over";
-      context!.fillStyle = backgroundColorRef.current;
-      context!.fillRect(0, 0, width, height);
+      context.globalAlpha = 1;
+      context.fillStyle = settings.background;
+      context.fillRect(0, 0, width, height);
 
-      const glow = context!.createRadialGradient(
-        pointer.active ? cursorX : centerX,
-        pointer.active ? cursorY : centerY - 20 * scale,
+      const glow = context.createRadialGradient(
+        width * 0.48,
+        height * 0.45,
         0,
-        centerX,
-        centerY,
-        Math.min(width, height) * 0.62,
+        width * 0.48,
+        height * 0.45,
+        Math.max(width, height) * 0.68,
       );
-      glow.addColorStop(0, rgba(glowRgb, 0.24));
-      glow.addColorStop(0.28, rgba(glowRgb, 0.12));
-      glow.addColorStop(0.7, rgba(glowRgb, 0.04));
-      glow.addColorStop(1, rgba(backgroundRgb, 0));
-      context!.fillStyle = glow;
-      context!.fillRect(0, 0, width, height);
-
-      const planetGlow = context!.createLinearGradient(0, height * 0.68, 0, height);
-      planetGlow.addColorStop(0, rgba(backgroundRgb, 0));
-      planetGlow.addColorStop(0.32, rgba(glowRgb, 0.055 * (1 - storyProgress)));
-      planetGlow.addColorStop(1, rgba(glowRgb, 0.16 * (1 - storyProgress)));
-      context!.fillStyle = planetGlow;
-      context!.beginPath();
-      context!.ellipse(
-        width * 0.5,
-        height + 145 * scale,
-        width * 0.72,
-        260 * scale,
+      glow.addColorStop(
         0,
-        Math.PI,
-        TAU,
+        `rgba(${tintRgb.r}, ${tintRgb.g}, ${tintRgb.b}, 0.075)`,
       );
-      context!.fill();
-      context!.strokeStyle = rgba(particleRgb, 0.22 * (1 - storyProgress));
-      context!.lineWidth = 1;
-      context!.stroke();
+      glow.addColorStop(
+        0.55,
+        `rgba(${backgroundRgb.r}, ${backgroundRgb.g}, ${backgroundRgb.b}, 0.02)`,
+      );
+      glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      context.fillStyle = glow;
+      context.fillRect(0, 0, width, height);
 
-      for (let star = 0; star < 90; star += 1) {
-        const starX = noise(star, seedRef.current + 11) * width;
-        const starY = noise(star + 503, seedRef.current + 17) * height * 0.78;
-        const twinkle = 0.12 + 0.18 * Math.sin(elapsed * 0.7 + star);
-        context!.fillStyle = rgba(
-          particleRgb,
-          Math.max(0.03, twinkle) * (1 - storyProgress * 0.55),
-        );
-        context!.fillRect(starX, starY, star % 13 === 0 ? 1.4 : 0.7, star % 13 === 0 ? 1.4 : 0.7);
-      }
+      const pointerYaw = pointer.active
+        ? ((pointer.x / Math.max(1, width) - 0.5) * 0.12)
+        : 0;
+      const pointerPitch = pointer.active
+        ? ((pointer.y / Math.max(1, height) - 0.5) * -0.08)
+        : 0;
+      const yaw = view.yaw + pointerYaw;
+      const pitch = view.pitch + pointerPitch;
+      const cosY = Math.cos(yaw);
+      const sinY = Math.sin(yaw);
+      const cosX = Math.cos(pitch);
+      const sinX = Math.sin(pitch);
+      const scale = Math.min(width, height) * 0.42 * view.zoom;
+      const centerX = width > 980 ? width * 0.45 : width * 0.5;
+      const centerY = height * (width < 720 ? 0.42 : 0.5);
+      const depthAmount = settings.depth / 100;
+      const interactionRadius = Math.min(150, Math.max(86, width * 0.105));
 
-      if (pointer.active || Math.abs(pointer.x) + Math.abs(pointer.y) > 0.02) {
-        const cursorGlow = context!.createRadialGradient(
-          cursorX,
-          cursorY,
-          0,
-          cursorX,
-          cursorY,
-          150 * scale,
-        );
-        cursorGlow.addColorStop(0, rgba(glowRgb, 0.14));
-        cursorGlow.addColorStop(0.32, rgba(glowRgb, 0.055));
-        cursorGlow.addColorStop(1, rgba(backgroundRgb, 0));
-        context!.fillStyle = cursorGlow;
-        context!.fillRect(0, 0, width, height);
-      }
+      context.fillStyle = settings.tint;
 
-      context!.globalCompositeOperation = "lighter";
-      const rotation =
-        -0.2 +
-        Math.sin(elapsed * 0.32) * 0.24 +
-        pointer.x * 0.82 +
-        storyProgress * 0.38;
-      const count = pointCountRef.current;
+      for (let index = 0; index < particles.length; index += 1) {
+        const particle = particles[index];
+        const breathing =
+          Math.sin(time * 0.00062 + particle.phase) * 0.018 * depthAmount;
+        const z = particle.depth * depthAmount + breathing;
+        const rotatedX = particle.x * cosY - z * sinY;
+        const rotatedZ = particle.x * sinY + z * cosY;
+        const rotatedY = particle.y * cosX - rotatedZ * sinX;
+        const finalZ = particle.y * sinX + rotatedZ * cosX;
+        const perspective = 3.25 / Math.max(1.8, 3.25 + finalZ);
 
-      for (let i = 0; i < count; i += 1) {
-        let point = sampleSatellite(i, count, elapsed, seedRef.current);
-        point = rotateX(
-          point,
-          pointer.y * -0.4 + Math.sin(elapsed * 0.21) * 0.035 - storyProgress * 0.08,
-        );
-        point = rotateY(point, rotation);
-        const perspective = 540 / (540 + point.z);
-        let x = centerX + point.x * scale * perspective;
-        let y = centerY + point.y * scale * perspective;
-        const cursorDx = cursorX - x;
-        const cursorDy = cursorY - y;
-        const cursorDistance = Math.hypot(cursorDx, cursorDy);
-        const cursorRadius = 145 * scale;
-        const attraction =
-          pointer.active && cursorDistance < cursorRadius
-            ? (1 - cursorDistance / cursorRadius) ** 2
-            : 0;
-        if (attraction > 0) {
-          const orbit = Math.sin(i * 0.043 + elapsed * 3.2);
-          x += cursorDx * attraction * 0.18 - cursorDy * attraction * orbit * 0.055;
-          y += cursorDy * attraction * 0.18 + cursorDx * attraction * orbit * 0.055;
+        let screenX = centerX + rotatedX * scale * perspective;
+        let screenY = centerY + rotatedY * scale * perspective;
+
+        if (pointer.active) {
+          const dx = screenX - pointer.x;
+          const dy = screenY - pointer.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance > 0 && distance < interactionRadius) {
+            const falloff = 1 - distance / interactionRadius;
+            const force =
+              falloff *
+              falloff *
+              settings.forceStrength *
+              (settings.forceMode === "repel" ? 62 : -44);
+            screenX += (dx / distance) * force;
+            screenY += (dy / distance) * force;
+          }
         }
-        const depth = Math.max(0.18, Math.min(1, (point.z + 140) / 280));
-        const pulse = 0.72 + 0.28 * Math.sin(i * 0.029 + elapsed * 2.6);
-        const alpha = Math.min(
-          1,
-          point.alpha *
-            (0.45 + depth * 0.55) *
-            pulse *
-            (1 + attraction * 1.8) *
-            brightnessRef.current,
+
+        const size = Math.max(
+          0.45,
+          settings.dotSize * perspective * (0.62 + particle.alpha * 0.52),
         );
-        const size =
-          (0.52 + depth * 0.88 + attraction * 1.1) *
-          scale *
-          dotSizeRef.current;
-        const colorMix = Math.min(1, attraction * 0.9 + (1 - depth) * 0.18);
-        const red = Math.round(particleRgb.r * (1 - colorMix) + glowRgb.r * colorMix);
-        const green = Math.round(particleRgb.g * (1 - colorMix) + glowRgb.g * colorMix);
-        const blue = Math.round(particleRgb.b * (1 - colorMix) + glowRgb.b * colorMix);
-        context!.fillStyle = `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-        context!.fillRect(x, y, size, size);
+        const edgeFade =
+          screenX < 0 || screenX > width || screenY < 0 || screenY > height
+            ? 0
+            : 1;
+
+        if (!edgeFade) {
+          continue;
+        }
+
+        if (settings.colorMode === "original") {
+          context.fillStyle = `rgb(${particle.r}, ${particle.g}, ${particle.b})`;
+        }
+
+        context.globalAlpha = clamp(
+          particle.alpha * (0.72 + perspective * 0.2),
+          0.08,
+          0.98,
+        );
+        context.fillRect(
+          screenX - size / 2,
+          screenY - size / 2,
+          size,
+          size,
+        );
       }
 
-      if (pointer.active) {
-        context!.strokeStyle = rgba(glowRgb, 0.42);
-        context!.lineWidth = 0.75;
-        context!.beginPath();
-        context!.arc(cursorX, cursorY, 13 + Math.sin(elapsed * 2) * 2, 0, TAU);
-        context!.stroke();
-        context!.fillStyle = rgba(particleRgb, 0.82);
-        context!.fillRect(cursorX - 1, cursorY - 1, 2, 2);
-      }
+      context.globalAlpha = 1;
+      frameRef.current = window.requestAnimationFrame(render);
+    };
 
-      frame = requestAnimationFrame(draw);
-    }
-
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
     resize();
-    frame = requestAnimationFrame(draw);
+    window.addEventListener("resize", resize);
+    frameRef.current = window.requestAnimationFrame(render);
 
     return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
+      window.removeEventListener("resize", resize);
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+      }
     };
   }, []);
 
-  function reseed() {
-    setSeed((current) => current + 1);
-  }
+  const loadImageFile = useCallback(
+    (file: File) => {
+      setError("");
 
-  function exportToolPackage() {
-    const toolPackage = {
-      format: TOOL_PACKAGE_FORMAT,
-      version: TOOL_PACKAGE_VERSION,
-      name: "Particle Signal",
-      createdAt: new Date().toISOString(),
-      scene: {
-        model: "communications-satellite",
-        seed,
-      },
-      particles: {
-        count: pointCount,
-        size: dotSize,
-        brightness,
-        color: particleColor,
-      },
-      environment: {
-        glowColor,
-        backgroundColor,
-      },
-      animation: {
-        speed,
-        paused,
-        cursorReactive: true,
-        scrollReactive: true,
-      },
-    };
-    const blob = new Blob([JSON.stringify(toolPackage, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `particle-signal-seed-${seed}.orbital.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    setPackageStatus("Tool package exported");
-  }
+      if (!file.type.startsWith("image/")) {
+        setError("Choose a JPG, PNG, WebP, GIF, or other image file.");
+        return;
+      }
 
-  async function importToolPackage(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+      if (file.size > MAX_FILE_SIZE) {
+        setError("That image is larger than 20 MB. Choose a smaller file.");
+        return;
+      }
 
-    try {
-      const parsed = JSON.parse(await file.text()) as {
-        format?: unknown;
-        version?: unknown;
-        scene?: { seed?: unknown };
-        particles?: {
-          count?: unknown;
-          size?: unknown;
-          brightness?: unknown;
-          color?: unknown;
-        };
-        environment?: {
-          glowColor?: unknown;
-          backgroundColor?: unknown;
-        };
-        animation?: {
-          speed?: unknown;
-          paused?: unknown;
-        };
+      setIsBusy(true);
+      const objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+
+      image.onload = () => {
+        const maxDimension = 960;
+        const ratio = Math.min(
+          1,
+          maxDimension / Math.max(image.naturalWidth, image.naturalHeight),
+        );
+        const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+        const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+        const samplingCanvas = document.createElement("canvas");
+        const samplingContext = samplingCanvas.getContext("2d", {
+          willReadFrequently: true,
+        });
+
+        if (!samplingContext) {
+          URL.revokeObjectURL(objectUrl);
+          setError("This browser could not process the image.");
+          setIsBusy(false);
+          return;
+        }
+
+        samplingCanvas.width = width;
+        samplingCanvas.height = height;
+        samplingContext.drawImage(image, 0, 0, width, height);
+
+        try {
+          const imageData = samplingContext.getImageData(0, 0, width, height);
+          pixelSourceRef.current = {
+            width,
+            height,
+            pixels: imageData.data,
+          };
+          const nextParticles = createImageParticles(
+            pixelSourceRef.current,
+            density,
+          );
+          particlesRef.current = nextParticles;
+          setActiveCount(nextParticles.length);
+          setFileName(file.name);
+          setHasImage(true);
+          setIsPanelOpen(true);
+          viewRef.current = {
+            dragging: false,
+            lastX: 0,
+            lastY: 0,
+            pitch: -0.04,
+            yaw: 0,
+            zoom: 1,
+          };
+        } catch {
+          setError("The image could not be read. Try saving it as PNG or JPG.");
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+          setIsBusy(false);
+        }
       };
 
-      if (
-        parsed.format !== TOOL_PACKAGE_FORMAT ||
-        parsed.version !== TOOL_PACKAGE_VERSION
-      ) {
-        throw new Error("Unsupported package");
-      }
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        setError("The image could not be opened. Try another file.");
+        setIsBusy(false);
+      };
 
-      setSeed(Math.round(clamp(parsed.scene?.seed, seed, 1, 9999)));
-      setPointCount(
-        Math.round(
-          clamp(parsed.particles?.count, pointCount, 3000, MAX_POINT_COUNT) / 1000,
-        ) * 1000,
-      );
-      setDotSize(clamp(parsed.particles?.size, dotSize, 0.35, 2.4));
-      setBrightness(clamp(parsed.particles?.brightness, brightness, 0.4, 1.6));
-      setParticleColor(validHex(parsed.particles?.color, particleColor));
-      setGlowColor(validHex(parsed.environment?.glowColor, glowColor));
-      setBackgroundColor(
-        validHex(parsed.environment?.backgroundColor, backgroundColor),
-      );
-      setSpeed(clamp(parsed.animation?.speed, speed, 0.1, 1.4));
-      if (typeof parsed.animation?.paused === "boolean") {
-        setPaused(parsed.animation.paused);
-      }
-      setPackageStatus(`Imported ${file.name}`);
-    } catch {
-      setPackageStatus("Could not import this package");
-    } finally {
-      event.target.value = "";
+      image.src = objectUrl;
+    },
+    [density],
+  );
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      loadImageFile(file);
     }
-  }
+    event.target.value = "";
+  };
 
-  function updatePointer(event: React.PointerEvent<HTMLElement>) {
-    const bounds = document.documentElement.getBoundingClientRect();
-    pointerRef.current.targetX = Math.max(
-      -1,
-      Math.min(1, (event.clientX / bounds.width) * 2 - 1),
-    );
-    pointerRef.current.targetY = Math.max(
-      -1,
-      Math.min(1, (event.clientY / window.innerHeight) * 2 - 1),
-    );
-    pointerRef.current.active = true;
-  }
+  const handleDrop = (event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setIsDraggingFile(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) {
+      loadImageFile(file);
+    }
+  };
 
-  function releasePointer() {
-    pointerRef.current.targetX = 0;
-    pointerRef.current.targetY = 0;
-    pointerRef.current.active = false;
-  }
+  const updatePointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    pointerRef.current = {
+      active: true,
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  };
+
+  const handlePointerDown = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updatePointer(event);
+    viewRef.current.dragging = true;
+    viewRef.current.lastX = event.clientX;
+    viewRef.current.lastY = event.clientY;
+  };
+
+  const handlePointerMove = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+  ) => {
+    updatePointer(event);
+
+    if (!viewRef.current.dragging) {
+      return;
+    }
+
+    const deltaX = event.clientX - viewRef.current.lastX;
+    const deltaY = event.clientY - viewRef.current.lastY;
+    viewRef.current.yaw += deltaX * 0.006;
+    viewRef.current.pitch = clamp(
+      viewRef.current.pitch + deltaY * 0.005,
+      -0.72,
+      0.72,
+    );
+    viewRef.current.lastX = event.clientX;
+    viewRef.current.lastY = event.clientY;
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    viewRef.current.dragging = false;
+  };
+
+  const handleWheel = (event: WheelEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    viewRef.current.zoom = clamp(
+      viewRef.current.zoom - event.deltaY * 0.001,
+      0.55,
+      2.2,
+    );
+  };
+
+  const resetView = () => {
+    viewRef.current.yaw = 0;
+    viewRef.current.pitch = -0.04;
+    viewRef.current.zoom = 1;
+  };
+
+  const exportImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !hasImage) {
+      return;
+    }
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        return;
+      }
+
+      const safeName =
+        fileName
+          .replace(/\.[^.]+$/, "")
+          .replace(/[^a-z0-9]+/gi, "-")
+          .replace(/^-|-$/g, "")
+          .toLowerCase() || "particle-signal";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${safeName}-particle-signal.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  };
 
   return (
     <main
-      className="experience"
-      onPointerMove={updatePointer}
-      onPointerLeave={releasePointer}
+      className={`tool-shell ${isDraggingFile ? "is-dropping" : ""}`}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setIsDraggingFile(true);
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) {
+          setIsDraggingFile(false);
+        }
+      }}
+      onDrop={handleDrop}
     >
-      <div className="scene-shell" aria-label="Interactive generative point-cloud artwork">
-        <canvas
-          ref={canvasRef}
-          aria-label="Animated point-cloud satellite that follows your cursor"
-        />
-        <div className="grain" aria-hidden="true" />
-      </div>
+      <canvas
+        ref={canvasRef}
+        className="particle-canvas"
+        aria-label="Interactive image particle field"
+        onDoubleClick={resetView}
+        onPointerDown={handlePointerDown}
+        onPointerLeave={() => {
+          if (!viewRef.current.dragging) {
+            pointerRef.current.active = false;
+          }
+        }}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onWheel={handleWheel}
+      />
 
-      <nav className="site-nav" aria-label="Primary navigation">
-        <a className="wordmark" href="#top" aria-label="Particle Signal home">
-          PS / 01
+      <div className="ambient-grid" aria-hidden="true" />
+      <div className="noise-layer" aria-hidden="true" />
+
+      <header className="topbar">
+        <a className="brand" href="#" aria-label="Particle Signal home">
+          <span className="brand-mark">PS</span>
+          <span className="brand-copy">
+            <strong>Particle Signal</strong>
+            <small>Image field studio</small>
+          </span>
         </a>
-        <div className="nav-status">
-          <span className="pulse-dot" />
-          SIGNAL LIVE
-        </div>
-        <button
-          type="button"
-          className="control-toggle"
-          aria-expanded={controlsOpen}
-          onClick={() => setControlsOpen((value) => !value)}
-        >
-          {controlsOpen ? "Close" : "Tune signal"}
-          <span>{controlsOpen ? "×" : "+"}</span>
-        </button>
-      </nav>
 
-      <aside className={`signal-panel ${controlsOpen ? "is-open" : ""}`} aria-hidden={!controlsOpen}>
-        <div className="panel-heading">
-          <span>Signal controls</span>
-          <span>SEED {seed.toString().padStart(2, "0")}</span>
+        <div className="topbar-status" aria-label="Privacy status">
+          <span className="status-light" />
+          Processed locally
         </div>
-        <label>
-          <span>Orbital motion <output>{speed.toFixed(2)}×</output></span>
-          <input
-            type="range"
-            min="0.1"
-            max="1.4"
-            step="0.05"
-            value={speed}
-            onChange={(event) => setSpeed(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          <span>Point count <output>{pointCount.toLocaleString()}</output></span>
-          <input
-            type="range"
-            min="3000"
-            max={MAX_POINT_COUNT}
-            step="1000"
-            value={pointCount}
-            onChange={(event) => setPointCount(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          <span>Dot size <output>{dotSize.toFixed(2)}×</output></span>
-          <input
-            type="range"
-            min="0.35"
-            max="2.4"
-            step="0.05"
-            value={dotSize}
-            onChange={(event) => setDotSize(Number(event.target.value))}
-          />
-        </label>
-        <label>
-          <span>Brightness <output>{brightness.toFixed(2)}×</output></span>
-          <input
-            type="range"
-            min="0.4"
-            max="1.6"
-            step="0.05"
-            value={brightness}
-            onChange={(event) => setBrightness(Number(event.target.value))}
-          />
-        </label>
-        <div className="color-controls">
-          <label className="color-control">
-            <span>Dots</span>
+
+        <div className="topbar-actions">
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={() => setIsPanelOpen((value) => !value)}
+            aria-expanded={isPanelOpen}
+            aria-controls="particle-controls"
+          >
+            Controls
+          </button>
+          <button
+            className="button button-primary"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {hasImage ? "Replace image" : "Upload image"}
+            <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+      </header>
+
+      <input
+        ref={fileInputRef}
+        className="visually-hidden"
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        aria-label="Upload an image"
+      />
+
+      {!hasImage && (
+        <section className="intro-card" aria-labelledby="tool-title">
+          <span className="eyebrow">Image → particles → interaction</span>
+          <h1 id="tool-title">
+            Turn any image into a <em>living signal.</em>
+          </h1>
+          <p>
+            Upload a JPG, PNG or WebP. Particle Signal rebuilds it locally as a
+            responsive 3D point field.
+          </p>
+          <button
+            className="upload-target"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isBusy}
+          >
+            <span className="upload-icon" aria-hidden="true">
+              +
+            </span>
+            <span>
+              <strong>{isBusy ? "Processing image…" : "Choose an image"}</strong>
+              <small>or drop one anywhere · up to 20 MB</small>
+            </span>
+          </button>
+          {error && <p className="error-message">{error}</p>}
+          <div className="intro-meta" aria-label="Tool capabilities">
+            <span>Up to 60K points</span>
+            <span>Private by default</span>
+            <span>PNG export</span>
+          </div>
+        </section>
+      )}
+
+      {hasImage && (
+        <div className="file-chip" role="status">
+          <span className="status-light" />
+          <span className="file-name">{fileName}</span>
+          <span>{formatCount(activeCount)} particles</span>
+        </div>
+      )}
+
+      <aside
+        id="particle-controls"
+        className={`control-panel ${isPanelOpen ? "is-open" : ""}`}
+        aria-label="Particle controls"
+      >
+        <div className="panel-header">
+          <div>
+            <span className="eyebrow">Live controls</span>
+            <h2>Shape the signal</h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={() => setIsPanelOpen(false)}
+            aria-label="Close controls"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="control-stack">
+          <label className="range-control">
+            <span>
+              Particle density
+              <output>{formatCount(density)}</output>
+            </span>
             <input
-              type="color"
-              value={particleColor}
-              onChange={(event) => setParticleColor(event.target.value)}
-              aria-label="Dot color"
+              type="range"
+              min="3000"
+              max={MAX_POINTS}
+              step="1000"
+              value={density}
+              onChange={(event) => setDensity(Number(event.target.value))}
             />
           </label>
-          <label className="color-control">
-            <span>Glow</span>
+
+          <label className="range-control">
+            <span>
+              Depth
+              <output>{depth}%</output>
+            </span>
             <input
-              type="color"
-              value={glowColor}
-              onChange={(event) => setGlowColor(event.target.value)}
-              aria-label="Glow color"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={depth}
+              onChange={(event) => setDepth(Number(event.target.value))}
             />
           </label>
-          <label className="color-control">
+
+          <label className="range-control">
+            <span>
+              Dot size
+              <output>{dotSize.toFixed(2)}×</output>
+            </span>
+            <input
+              type="range"
+              min="0.5"
+              max="3"
+              step="0.05"
+              value={dotSize}
+              onChange={(event) => setDotSize(Number(event.target.value))}
+            />
+          </label>
+
+          <label className="range-control">
+            <span>
+              Cursor force
+              <output>{forceStrength.toFixed(2)}×</output>
+            </span>
+            <input
+              type="range"
+              min="0.2"
+              max="1.5"
+              step="0.05"
+              value={forceStrength}
+              onChange={(event) =>
+                setForceStrength(Number(event.target.value))
+              }
+            />
+          </label>
+        </div>
+
+        <div className="control-group">
+          <span className="control-label">Cursor behavior</span>
+          <div className="segmented-control">
+            {(["repel", "attract"] as ForceMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={forceMode === mode ? "is-active" : ""}
+                onClick={() => setForceMode(mode)}
+              >
+                {mode === "repel" ? "Repel" : "Attract"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="control-group">
+          <span className="control-label">Particle color</span>
+          <div className="segmented-control">
+            {(["original", "tint"] as ColorMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={colorMode === mode ? "is-active" : ""}
+                onClick={() => setColorMode(mode)}
+              >
+                {mode === "original" ? "Original" : "Tint"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="color-row">
+          <label>
+            <span>Signal</span>
+            <input
+              type="color"
+              value={tint}
+              onChange={(event) => setTint(event.target.value)}
+              aria-label="Signal tint color"
+            />
+          </label>
+          <label>
             <span>Space</span>
             <input
               type="color"
-              value={backgroundColor}
-              onChange={(event) => setBackgroundColor(event.target.value)}
+              value={background}
+              onChange={(event) => setBackground(event.target.value)}
               aria-label="Background color"
             />
           </label>
         </div>
-        <div className="package-actions">
-          <button type="button" onClick={exportToolPackage}>
-            Export tool package
-            <span>↓</span>
-          </button>
-          <button type="button" onClick={() => packageInputRef.current?.click()}>
-            Import tool package
-            <span>↑</span>
-          </button>
-          <input
-            ref={packageInputRef}
-            className="package-input"
-            type="file"
-            accept=".json,.orbital.json,application/json"
-            onChange={importToolPackage}
-            tabIndex={-1}
-            aria-hidden="true"
-          />
-        </div>
-        {packageStatus ? (
-          <p className="package-status" role="status">{packageStatus}</p>
-        ) : null}
+
         <div className="panel-actions">
-          <button type="button" onClick={() => setPaused((value) => !value)}>
-            {paused ? "Resume field" : "Pause field"}
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={resetView}
+          >
+            Reset view
           </button>
-          <button type="button" onClick={reseed}>New variation ↗</button>
+          <button
+            className="button button-primary"
+            type="button"
+            onClick={exportImage}
+            disabled={!hasImage}
+          >
+            Export PNG
+            <span aria-hidden="true">↓</span>
+          </button>
         </div>
       </aside>
 
-      <div className="telemetry-badges" aria-hidden="true">
-        <span className="telemetry-badge badge-one">RX</span>
-        <span className="telemetry-badge badge-two">∿</span>
-        <span className="telemetry-badge badge-three">◇</span>
+      <div className="interaction-hint" aria-hidden="true">
+        <span>Drag to rotate</span>
+        <span>Scroll to zoom</span>
+        <span>Move to distort</span>
       </div>
 
-      <div className="story">
-        <section className="hero" id="top">
-          <div className="hero-copy">
-            <div className="kicker">Introducing orbital intelligence</div>
-            <h1>Signals with<br /><em>perspective.</em></h1>
-            <p>
-              A living satellite model formed from {pointCount.toLocaleString()} points.
-              Move to alter its attitude. Scroll to enter the transmission.
-            </p>
+      {isDraggingFile && (
+        <div className="drop-overlay" aria-hidden="true">
+          <div>
+            <span>+</span>
+            Drop image to transform
           </div>
-          <div className="scroll-cue" aria-hidden="true">
-            <span>Scroll to approach</span>
-            <i />
-          </div>
-          <div className="hero-index">01 — 04</div>
-        </section>
-
-        <section className="manifesto">
-          <p className="section-label">[ THE RELAY ]</p>
-          <h2>
-            It doesn&apos;t just observe.
-            <br />
-            It <em>responds.</em>
-          </h2>
-          <p className="manifesto-copy">
-            Light, attitude and telemetry continuously recompute around your position—
-            turning a static orbital object into a responsive instrument.
-          </p>
-        </section>
-
-        <section className="lens-section">
-          <div className="lens-card">
-            <span className="card-index">02 / COMMUNICATIONS ARRAY</span>
-            <h3>See the signal take shape.</h3>
-            <p>
-              Cursor proximity bends the point field while a moving lavender source
-              reveals the equipment bus, communications dish and solar geometry.
-            </p>
-          </div>
-          <div className="coordinate-readout" aria-hidden="true">
-            <span>ALT 547.28 KM</span>
-            <span>INC 51.64°</span>
-            <span>{pointCount.toLocaleString()} NODES</span>
-          </div>
-        </section>
-
-        <section className="systems">
-          <div className="systems-header">
-            <p className="section-label">[ SYSTEM ARCHITECTURE ]</p>
-            <h2>One relay.<br />Three living systems.</h2>
-          </div>
-          <div className="system-grid">
-            <article>
-              <span>01</span>
-              <h3>Comms</h3>
-              <p>A dominant parabolic dish and feed boom make the relay readable at a glance.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <h3>Solar</h3>
-              <p>Six articulated photovoltaic surfaces breathe with independent phase.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <h3>Telemetry</h3>
-              <p>Three precessing orbital tracks carry live nodes around the flight bus.</p>
-            </article>
-          </div>
-          <div className="systems-footer">
-            <span>PARTICLE SIGNAL / EXPERIMENT 01</span>
-            <a href="#top">Return to orbit ↑</a>
-          </div>
-        </section>
-      </div>
+        </div>
+      )}
     </main>
   );
 }

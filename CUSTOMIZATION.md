@@ -1,92 +1,73 @@
 # Customization Guide
 
-## Change Default Controls
+## Change Particle Limits
 
-Defaults are defined near the start of the `Home` component in
-`app/page.tsx`.
-
-Current defaults:
+The main constants are near the top of `app/page.tsx`:
 
 ```ts
-const DEFAULT_POINT_COUNT = 12000;
-const MAX_POINT_COUNT = 60000;
+const MAX_POINTS = 60_000;
+const DEFAULT_POINTS = 18_000;
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
 ```
 
-The initial color values are:
+Update the corresponding range input when changing the limit. Values above
+60,000 are better suited to a WebGL renderer.
+
+## Change Image Sampling
+
+`createImageParticles()` controls how pixels become particles.
+
+- `step` determines grid spacing from the requested density.
+- `jitterX` and `jitterY` soften the grid.
+- `longestSide` preserves the image aspect ratio.
+- luminance controls the initial Z depth and opacity.
+- transparent pixels below the alpha threshold are skipped.
+
+The upload path scales large images to a maximum dimension of 960 pixels before
+sampling. Increase that value only when more source detail is worth the memory
+cost.
+
+## Change Depth and Motion
+
+The animation loop applies:
+
+- `depthAmount` for luminance-driven relief
+- `breathing` for subtle continuous Z motion
+- `yaw` and `pitch` for rotation
+- `view.zoom` for camera scale
+- `interactionRadius` and `force` for cursor behavior
+
+Keep motion subtle enough that the uploaded image remains recognizable.
+
+## Change Default Colors
+
+Defaults live in the `Home` component:
 
 ```ts
-const [particleColor, setParticleColor] = useState("#d8cbff");
-const [glowColor, setGlowColor] = useState("#a986ff");
-const [backgroundColor, setBackgroundColor] = useState("#050408");
+const [background, setBackground] = useState("#050408");
+const [tint, setTint] = useState("#d8cbff");
 ```
 
-Keep each state value and its matching ref initialized to the same color.
+Original mode uses sampled RGB values. Tint mode uses the selected signal color
+while preserving sampled opacity.
 
-## Increase the Point Limit
-
-Change `MAX_POINT_COUNT`. Values above 60,000 may reduce frame rate because
-Canvas 2D draws every point on every frame.
-
-The geometry uses proportional point ranges, so increasing the total preserves
-the distribution across the bus, panels, dish, booms, and telemetry.
-
-For substantially higher limits, WebGL or Three.js Points is a better renderer.
-
-## Change Satellite Proportions
-
-Inside `sampleSatellite()`:
-
-- `busEnd` controls the equipment-bus share.
-- `panelEnd` controls the solar-panel share.
-- `boomEnd` controls booms and braces.
-- `dishEnd` controls the communications dish.
-- `instrumentEnd` controls sensors and masts.
-
-The values are cumulative percentages. Keep them in increasing order and below
-1.0.
-
-## Change Illustration Size
-
-Find this block in the animation loop:
-
-```ts
-const illustrationScale = width < 600 ? 1.34 : 1.46;
-```
-
-Increase the values to enlarge the satellite. Very large values can crop the
-solar arrays on narrow screens.
-
-## Change Cursor Response
-
-The `rotation` expression controls horizontal response. The `rotateX()` call
-controls vertical response.
-
-The nearby-particle effect is controlled by:
-
-- `cursorRadius`
-- `attraction`
-- the X/Y offsets inside `if (attraction > 0)`
-
-## Change Typography and Layout
+## Change Interface Styling
 
 Edit `app/globals.css`.
 
-Primary sections:
+Primary surfaces:
 
-- `.hero`
-- `.manifesto`
-- `.lens-section`
-- `.systems`
-- `.signal-panel`
+- `.topbar`
+- `.intro-card`
+- `.upload-target`
+- `.control-panel`
+- `.file-chip`
+- `.drop-overlay`
 
-Display typography uses Inter Tight from Google Fonts. Replace the import at
-the top of `app/globals.css` to use another family.
+The page is intentionally locked to `100svh` with hidden overflow so no second
+screen appears below the tool.
 
-## Change Page Copy
+## Change Copy and Metadata
 
-Editorial text and labels live in the JSX returned by `Home()` in
-`app/page.tsx`. Social metadata lives in `app/layout.tsx`.
-
-If the visual identity or wording changes substantially, replace the
-social-sharing image and update its filename in `app/layout.tsx`.
-
+Interface text lives in `app/page.tsx`. Search/social metadata lives in
+`app/layout.tsx`, and the social card is `public/og.png`.

@@ -1,35 +1,29 @@
 # Particle Signal
 
-Particle Signal is an interactive point-cloud satellite illustration built with
-React, Next.js, TypeScript, and the Canvas 2D API. The spacecraft reacts to the
-cursor, changes camera position while scrolling, and exposes live controls for
-motion, particle count, dot appearance, and color.
+Particle Signal is a single-screen creative tool that turns an uploaded image
+into a customizable, cursor-reactive 3D particle field. Images are decoded and
+sampled entirely in the browser; they are never uploaded to a server.
 
-Live reference:
+Live site:
 [point-cloud-sketch.vercel.app](https://point-cloud-sketch.vercel.app)
 
 ## Features
 
-- Procedural communications satellite made from 3,000–60,000 points
-- Rectangular equipment bus, parabolic dish, solar arrays, booms, and telemetry
-- Cursor-controlled yaw, pitch, light, and local particle attraction
-- Scroll-driven camera approach
-- Editable dot size and brightness
-- Editable particle, glow, and background colors
-- Pause, speed, and seed variation controls
-- Responsive desktop and mobile presentation
-- No API key, backend, database, or external 3D model required
+- Local JPG, PNG, WebP, GIF, and image-file processing
+- Subtle luminance-driven 3D depth
+- Drag-to-rotate, wheel-to-zoom, and cursor distortion
+- Repel and attract interaction modes
+- Original-image color or a custom single-color tint
+- Custom background color
+- Adjustable depth, dot size, interaction strength, and 3,000–60,000 particles
+- PNG export of the current particle composition
+- Responsive single-screen desktop and mobile interface
+- No API key, backend, database, account, or image storage
 
 ## Requirements
 
 - Node.js 22.13 or newer
 - pnpm 10 or newer
-
-Install pnpm if necessary:
-
-```bash
-npm install --global pnpm
-```
 
 ## Run Locally
 
@@ -40,94 +34,59 @@ pnpm dev
 
 Open the local URL printed in the terminal.
 
-Create a production build:
-
-```bash
-pnpm run vercel-build
-```
-
-For correct social-preview URLs after deployment, copy `.env.example` to
-`.env.local` and replace the sample address with the recipient's final site URL.
-
-The project also includes the vinext build used by OpenAI Sites:
+Production builds:
 
 ```bash
 pnpm run build
+pnpm run vercel-build
 ```
 
 ## Using the Tool
 
-1. Move the cursor around the satellite to change its attitude and light.
-2. Scroll to move the camera through the editorial story.
-3. Select **Tune signal** in the upper-right corner.
-4. Adjust:
-   - orbital motion
-   - point count from 3,000 to 60,000
-   - dot size
-   - brightness
-   - dot color
-   - glow color
-   - space/background color
-5. Pause the field or create a new seeded variation.
+1. Select **Upload image**, choose a file, or drop an image anywhere.
+2. Move the cursor across the result to bend nearby particles.
+3. Drag to rotate the depth field and scroll to zoom.
+4. Open **Controls** to change particle density, depth, dot size, force,
+   interaction mode, colors, or background.
+5. Select **Export PNG** to download the current composition.
 
-High point counts require more graphics work. If a device becomes slow, reduce
-the point count or dot size.
+The image stays on the device. Only sampled pixel values are used to render the
+canvas. High particle counts require more graphics work; reduce density or dot
+size if a device becomes slow.
 
 ## Important Files
 
 | File | Purpose |
 | --- | --- |
-| `app/page.tsx` | Particle geometry, animation loop, interactions, controls, and page content |
-| `app/globals.css` | Layout, typography, responsive behavior, and control styling |
-| `app/layout.tsx` | Page title, description, icons, and social-sharing metadata |
-| `public/og-v2.png` | Social-sharing image |
-| `vercel.json` | Vercel production build configuration |
+| `app/page.tsx` | Image decoding, pixel sampling, particle rendering, interactions, controls, and PNG export |
+| `app/globals.css` | Single-screen layout, interface styling, and responsive behavior |
+| `app/layout.tsx` | Page title, description, icons, and social metadata |
+| `public/og.png` | Social-sharing image |
+| `tests/rendered-html.test.mjs` | Rendering and source-contract tests |
+| `vercel.json` | Vercel build configuration |
 | `vite.config.ts` | vinext/OpenAI Sites build configuration |
 
-For a deeper explanation, read [WORKFLOW.md](./WORKFLOW.md). For common edits,
-read [CUSTOMIZATION.md](./CUSTOMIZATION.md).
+For implementation details, read [WORKFLOW.md](./WORKFLOW.md). For common
+changes, read [CUSTOMIZATION.md](./CUSTOMIZATION.md).
 
 ## Deploy to Vercel
 
-Install and authenticate the Vercel CLI, then run:
-
 ```bash
 pnpm dlx vercel
-```
-
-For a production deployment:
-
-```bash
 pnpm dlx vercel --prod
 ```
 
-The first deployment asks which Vercel account and project should own the site.
-The included `.vercel` link from the original project is intentionally omitted.
-Add `NEXT_PUBLIC_SITE_URL` to the Vercel project's environment variables after
-the final domain is known.
-
-## Publish This Repository to GitHub
-
-Create an empty GitHub repository without an autogenerated README, license, or
-`.gitignore`. Then connect and push this local repository:
-
-```bash
-git remote add origin https://github.com/YOUR-ACCOUNT/particle-signal.git
-git push -u origin main
-```
-
-For a private repository, invite collaborators from the repository's
-**Settings → Collaborators** page.
+Set `NEXT_PUBLIC_SITE_URL` to the final production URL so social metadata uses
+the correct origin.
 
 ## Deploy to OpenAI Sites
 
-The included `.openai/hosting.json` is sanitized and has no project ID. When
-opening the project in a Sites-enabled Codex workspace, ask Codex to build and
-publish the site. A new Sites project should be created for the recipient.
+The included `.openai/hosting.json` is sanitized and has no project ID. A new
+Sites project should be created for a new owner.
 
-## Sharing and Ownership
+## Repository
 
-This package contains source code and documentation but no credentials,
-deployment tokens, dependency folders, build output, or original repository
-history. No open-source license is included; agree on reuse and ownership terms
-with the original creator before public redistribution.
+[github.com/zendesign0105-cell/Particle-Signal](https://github.com/zendesign0105-cell/Particle-Signal)
+
+No open-source license is included. Agree on reuse and ownership terms before
+public redistribution.

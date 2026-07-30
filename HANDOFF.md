@@ -5,33 +5,23 @@
 Start with `README.md`, then inspect `app/page.tsx` and `app/globals.css`.
 Install dependencies with `pnpm install` and run `pnpm dev`.
 
-The project has no required environment variables or remote services.
+The tool has no required API keys, backend, accounts, database, or image
+storage. Uploaded images must remain client-side.
 
-Do not commit:
-
-- `.vercel`
-- `.next`
-- `dist`
-- `.wrangler`
-- `node_modules`
-- `.env` files
+Do not commit `.vercel`, `.next`, `dist`, `.wrangler`, `node_modules`,
+`.pnpm-store`, or `.env` files.
 
 ## For Codex or Another Coding Agent
 
 Use this brief:
 
-> Maintain an interactive Canvas 2D point-cloud communications satellite built
-> in `app/page.tsx`. Preserve the recognizable rectangular bus, dominant dish,
-> symmetrical solar-panel wings, cursor reaction, scroll-driven camera, and
-> tuning panel. Preserve live controls for 3,000–60,000 points, dot size,
-> brightness, particle color, glow color, and background color. Use Inter Tight
-> for the interface. Validate with both `pnpm run build` and
-> `pnpm run vercel-build`. Do not add a backend or external 3D model unless
-> explicitly requested.
-
-When changing particle geometry, allocate points proportionally to the current
-total. Fixed index thresholds will fail when the user selects more than the
-original point count.
+> Maintain a single-screen Canvas 2D creative tool that transforms locally
+> uploaded images into interactive 3D particle fields. Preserve client-side
+> privacy, recognizable image reconstruction, drag rotation, wheel zoom,
+> cursor attract/repel, original and tint color modes, custom background,
+> 3,000–60,000 particles, and PNG export. Keep Inter Tight and the black/lavender
+> visual system. Do not add a backend or upload images to a server unless
+> explicitly requested. Validate both production builds and the rendering tests.
 
 ## Recipient Checklist
 
@@ -39,9 +29,9 @@ original point count.
 - [ ] Install pnpm
 - [ ] Run `pnpm install`
 - [ ] Run `pnpm dev`
-- [ ] Test cursor response
-- [ ] Test scrolling
-- [ ] Test 3,000 and 60,000 points
-- [ ] Test all color pickers
-- [ ] Create a new Vercel or OpenAI Sites project
-
+- [ ] Test JPG, transparent PNG, and replacement upload
+- [ ] Test cursor movement, drag, zoom, reset, attract, and repel
+- [ ] Test original colors, tint, background, and 3,000/60,000 points
+- [ ] Export a PNG
+- [ ] Check desktop and mobile layouts
+- [ ] Run both production builds

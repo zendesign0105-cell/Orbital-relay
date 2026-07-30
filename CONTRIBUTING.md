@@ -20,11 +20,12 @@ pnpm run vercel-build
 
 Then verify:
 
-- cursor response still feels smooth
-- scroll-driven camera movement still works
-- the tuning panel works at 3,000 and 60,000 points
-- all three color controls update the scene
-- the satellite remains recognizable on desktop and mobile
+- JPG and transparent PNG uploads remain local and render correctly
+- cursor attract/repel, drag rotation, wheel zoom, and reset work
+- the controls remain usable at 3,000 and 60,000 points
+- original color, tint, and background controls update the field
+- PNG export downloads the current composition
+- the one-screen interface remains usable on desktop and mobile
 - no generated build folders or credentials are staged
 
 ## Pull Requests
@@ -37,7 +38,6 @@ short recording when changing the illustration or layout.
 
 - Keep TypeScript strict.
 - Preserve accessible labels for controls.
-- Use proportional particle allocations when changing geometry.
-- Avoid external 3D assets unless the change explicitly requires them.
+- Preserve client-side image privacy.
+- Avoid server-side image uploads unless the change explicitly requires them.
 - Do not commit `.env`, `.vercel`, `.next`, `dist`, or `node_modules`.
-
